@@ -15,7 +15,8 @@ export default {
     file: 'dist/bundle.js',
     format: 'iife',
     sourcemap: true,
-    name: 'jsQuotes'
+    name: 'jsQuotes',
+    inlineDynamicImports: true
   },
   plugins: [
     resolve({

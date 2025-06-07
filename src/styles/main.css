@@ -1095,6 +1095,15 @@ body {
   background: #38a169;
 }
 
+.pdf-btn {
+  background: #e53e3e;
+  color: white;
+}
+
+.pdf-btn:hover {
+  background: #c53030;
+}
+
 .calendar-btn {
   background: #ed8936;
   color: white;
@@ -1102,6 +1111,24 @@ body {
 
 .calendar-btn:hover {
   background: #dd6b20;
+}
+
+/* PDF Export specific styles */
+@media print {
+  .export-options {
+    display: none !important;
+  }
+  
+  .daily-itinerary {
+    background: white !important;
+    box-shadow: none !important;
+    padding: 20px !important;
+  }
+  
+  .day-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }
 
 /* Responsive Design */
