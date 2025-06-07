@@ -2,6 +2,55 @@ import React from 'react'
 import { format } from 'date-fns'
 
 export const DailyItinerary = ({ itinerary, startDate }) => {
+  
+  // Helper function to calculate detailed timing breakdown
+  const getTimingBreakdown = (day) => {
+    const breakdown = {
+      travel: 0,
+      activities: 0,
+      localTravel: 0,
+      travelType: 'one-way'
+    }
+    
+    // Calculate POI activity time
+    const getPoiMinutes = (duration) => {
+      switch(duration) {
+        case 'quick': return 90
+        case 'half-day': return 210
+        case 'full-day': return 420
+        default: return 210
+      }
+    }
+    
+    breakdown.activities = day.pois.reduce((total, poi) => 
+      total + getPoiMinutes(poi.duration || 'half-day'), 0
+    )
+    
+    if (day.type === 'travel') {
+      // Pure travel day
+      breakdown.travel = day.estimatedTravelTime
+      breakdown.travelType = day.route?.to?.location === day.route?.from?.location ? 'round-trip' : 'one-way'
+      
+      // Determine if it's return travel (to home)
+      const isReturnTravel = day.route?.to?.location && 
+        (day.route.to.location.toLowerCase().includes('home') || 
+         day.title?.toLowerCase().includes('return'))
+      breakdown.travelType = isReturnTravel ? 'return' : 'departure'
+      
+    } else if (day.type === 'mixed') {
+      // Mixed day: travel + activities
+      const baseTravelTime = 180 // Base travel time for mixed days
+      breakdown.travel = baseTravelTime
+      breakdown.localTravel = Math.max(0, day.estimatedTravelTime - breakdown.activities - baseTravelTime)
+      breakdown.travelType = day.title?.toLowerCase().includes('return') ? 'return' : 'departure'
+      
+    } else {
+      // Tour day: just local travel between POIs
+      breakdown.localTravel = Math.max(60, day.estimatedTravelTime - breakdown.activities)
+    }
+    
+    return breakdown
+  }
   const exportToJson = () => {
     const dataStr = JSON.stringify(itinerary, null, 2)
     const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr)
@@ -214,9 +263,53 @@ export const DailyItinerary = ({ itinerary, startDate }) => {
               )}
               
               <div className="day-stats">
-                <span className="travel-time">
-                  🕐 ~{Math.round(day.estimatedTravelTime / 60)}h {day.type === 'travel' ? 'driving' : day.type === 'mixed' ? 'travel + activities' : 'activities + local travel'}
-                </span>
+                <div className="timing-breakdown">
+                  <h5>⏰ Timing Breakdown</h5>
+                  {(() => {
+                    const timing = getTimingBreakdown(day)
+                    return (
+                      <div className="timing-details">
+                        {timing.travel > 0 && (
+                          <div className="timing-item">
+                            <span className="timing-icon">
+                              {timing.travelType === 'departure' && '🚗➡️'}
+                              {timing.travelType === 'return' && '🏠⬅️'} 
+                              {timing.travelType === 'round-trip' && '🚗🔄'}
+                            </span>
+                            <span className="timing-label">
+                              {timing.travelType === 'departure' && 'Travel to destination'}
+                              {timing.travelType === 'return' && 'Return travel home'}
+                              {timing.travelType === 'round-trip' && 'Round-trip travel'}
+                            </span>
+                            <span className="timing-duration">{Math.round(timing.travel / 60)}h {timing.travel % 60 > 0 ? `${timing.travel % 60}m` : ''}</span>
+                          </div>
+                        )}
+                        
+                        {timing.activities > 0 && (
+                          <div className="timing-item">
+                            <span className="timing-icon">🎯</span>
+                            <span className="timing-label">Activities & sightseeing</span>
+                            <span className="timing-duration">{Math.round(timing.activities / 60)}h {timing.activities % 60 > 0 ? `${timing.activities % 60}m` : ''}</span>
+                          </div>
+                        )}
+                        
+                        {timing.localTravel > 0 && (
+                          <div className="timing-item">
+                            <span className="timing-icon">🚶‍♂️</span>
+                            <span className="timing-label">Local travel between sites</span>
+                            <span className="timing-duration">{Math.round(timing.localTravel / 60)}h {timing.localTravel % 60 > 0 ? `${timing.localTravel % 60}m` : ''}</span>
+                          </div>
+                        )}
+                        
+                        <div className="timing-total">
+                          <span className="timing-icon">⏱️</span>
+                          <span className="timing-label"><strong>Total day duration</strong></span>
+                          <span className="timing-duration"><strong>{Math.round(day.estimatedTravelTime / 60)}h {day.estimatedTravelTime % 60 > 0 ? `${day.estimatedTravelTime % 60}m` : ''}</strong></span>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
               </div>
             </div>
           </div>
