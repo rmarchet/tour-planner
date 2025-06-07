@@ -19,14 +19,17 @@ export default {
   },
   plugins: [
     resolve({
-      extensions: ['.js', '.jsx']
+      extensions: ['.js', '.jsx'],
+      browser: true,
+      preferBuiltins: false
     }),
     replace({
       'process.env.NODE_ENV': JSON.stringify(production ? 'production' : 'development'),
       preventAssignment: true
     }),
     commonjs({
-      include: 'node_modules/**'
+      include: 'node_modules/**',
+      transformMixedEsModules: true
     }),
     babel({
       babelHelpers: 'bundled',
