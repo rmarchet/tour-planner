@@ -1226,6 +1226,13 @@ body {
   line-height: 1.5;
 }
 
+.pdf-header-summary-page {
+  min-height: 250mm;
+  padding: 20mm;
+  background: white;
+  page-break-after: always;
+}
+
 .pdf-header {
   text-align: center;
   margin-bottom: 2rem;
@@ -1275,15 +1282,27 @@ body {
 .pdf-daily-schedule {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 2rem;
+}
+
+.pdf-daily-schedule .pdf-day-card:not(:last-child)::after {
+  content: "";
+  display: block;
+  height: 2px;
+  background: linear-gradient(90deg, #667eea, transparent);
+  margin-top: 2rem;
+  width: 100%;
 }
 
 .pdf-day-card {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 1rem;
+  padding: 20mm;
   break-inside: avoid;
   page-break-inside: avoid;
+  min-height: 250mm;
+  background: white;
+  page-break-after: always;
 }
 
 .pdf-day-card.travel {
@@ -1438,6 +1457,42 @@ body {
   align-items: center;
   font-size: 0.85rem;
   color: #2d3748;
+}
+
+/* PDF Day Map */
+.pdf-day-map-container {
+  margin-top: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pdf-day-map-container h5 {
+  margin: 0;
+  padding: 0.5rem;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e2e8f0;
+  color: #2d3748;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.pdf-day-map {
+  width: 100%;
+  height: 150px;
+  background: #f7fafc;
+}
+
+.pdf-day-map-placeholder {
+  padding: 1rem;
+  text-align: center;
+  background: #f7fafc;
+  color: #718096;
+  font-size: 0.8rem;
+}
+
+.pdf-day-map-placeholder p {
+  margin: 0;
 }
 
 /* PDF Export specific styles */

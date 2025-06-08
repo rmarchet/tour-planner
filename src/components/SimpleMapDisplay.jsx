@@ -38,7 +38,10 @@ const MapController = ({ bounds }) => {
   
   useEffect(() => {
     if (bounds && bounds.length > 0) {
-      map.fitBounds(bounds, { padding: [20, 20] })
+      // Small delay to ensure map is ready
+      setTimeout(() => {
+        map.fitBounds(bounds, { padding: [20, 20] })
+      }, 100)
     }
   }, [map, bounds])
   
@@ -384,15 +387,88 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
     calculateRoutes()
   }, [tourData.plannedItinerary, tourData.overnightStays, tourData.pois, tourData.homeLocation])
 
+  // Get locations relevant to a specific day
+  const getLocationsForDay = (dayIndex) => {
+    if (!tourData.plannedItinerary || dayIndex < 0 || dayIndex >= tourData.plannedItinerary.length) {
+      return { homeLocation: null, overnightStays: [], pois: [] }
+    }
+    
+    const day = tourData.plannedItinerary[dayIndex]
+    let relevantLocations = { homeLocation: null, overnightStays: [], pois: [] }
+    
+    // Check if home location is relevant (first or last day travel)
+    if (day.type === 'travel' || day.type === 'mixed') {
+      if (day.route) {
+        // Check if home is part of the travel route
+        if (tourData.homeLocation?.coordinates) {
+          const homeCoords = [tourData.homeLocation.coordinates.latitude, tourData.homeLocation.coordinates.longitude]
+          const fromCoords = day.route.from.coordinates ? [day.route.from.coordinates.latitude, day.route.from.coordinates.longitude] : null
+          const toCoords = day.route.to.coordinates ? [day.route.to.coordinates.latitude, day.route.to.coordinates.longitude] : null
+          
+          // Check if home matches either from or to location (with some tolerance)
+          if (fromCoords && Math.abs(homeCoords[0] - fromCoords[0]) < 0.01 && Math.abs(homeCoords[1] - fromCoords[1]) < 0.01) {
+            relevantLocations.homeLocation = tourData.homeLocation
+          } else if (toCoords && Math.abs(homeCoords[0] - toCoords[0]) < 0.01 && Math.abs(homeCoords[1] - toCoords[1]) < 0.01) {
+            relevantLocations.homeLocation = tourData.homeLocation
+          }
+        }
+        
+        // Add overnight stays involved in travel
+        tourData.overnightStays.forEach(stay => {
+          if (stay.coordinates) {
+            const stayCoords = [stay.coordinates.latitude, stay.coordinates.longitude]
+            const fromCoords = day.route.from.coordinates ? [day.route.from.coordinates.latitude, day.route.from.coordinates.longitude] : null
+            const toCoords = day.route.to.coordinates ? [day.route.to.coordinates.latitude, day.route.to.coordinates.longitude] : null
+            
+            if ((fromCoords && Math.abs(stayCoords[0] - fromCoords[0]) < 0.01 && Math.abs(stayCoords[1] - fromCoords[1]) < 0.01) ||
+                (toCoords && Math.abs(stayCoords[0] - toCoords[0]) < 0.01 && Math.abs(stayCoords[1] - toCoords[1]) < 0.01)) {
+              relevantLocations.overnightStays.push(stay)
+            }
+          }
+        })
+      }
+    }
+    
+    if (day.type === 'tour' || day.type === 'mixed') {
+      // Add overnight stay for tour day
+      if (day.overnightStayId) {
+        const overnightStay = tourData.overnightStays.find(stay => stay.id === day.overnightStayId)
+        if (overnightStay && overnightStay.coordinates && !relevantLocations.overnightStays.some(s => s.id === overnightStay.id)) {
+          relevantLocations.overnightStays.push(overnightStay)
+        }
+      }
+      
+      // Add POIs for this day
+      if (day.pois) {
+        relevantLocations.pois = day.pois.filter(poi => poi.coordinates)
+      }
+    }
+    
+    return relevantLocations
+  }
+
   // Calculate map bounds
   const calculateBounds = () => {
-    const allLocations = [
-      ...(tourData.homeLocation?.coordinates ? [[tourData.homeLocation.coordinates.latitude, tourData.homeLocation.coordinates.longitude]] : []),
-      ...tourData.overnightStays.filter(stay => stay.coordinates).map(stay => [stay.coordinates.latitude, stay.coordinates.longitude]),
-      ...tourData.pois.filter(poi => poi.coordinates).map(poi => [poi.coordinates.latitude, poi.coordinates.longitude])
-    ]
+    let locations = []
+    
+    if (selectedDay === 'all') {
+      // Show all locations
+      locations = [
+        ...(tourData.homeLocation?.coordinates ? [[tourData.homeLocation.coordinates.latitude, tourData.homeLocation.coordinates.longitude]] : []),
+        ...tourData.overnightStays.filter(stay => stay.coordinates).map(stay => [stay.coordinates.latitude, stay.coordinates.longitude]),
+        ...tourData.pois.filter(poi => poi.coordinates).map(poi => [poi.coordinates.latitude, poi.coordinates.longitude])
+      ]
+    } else {
+      // Show only locations for selected day
+      const dayLocations = getLocationsForDay(parseInt(selectedDay))
+      locations = [
+        ...(dayLocations.homeLocation?.coordinates ? [[dayLocations.homeLocation.coordinates.latitude, dayLocations.homeLocation.coordinates.longitude]] : []),
+        ...dayLocations.overnightStays.map(stay => [stay.coordinates.latitude, stay.coordinates.longitude]),
+        ...dayLocations.pois.map(poi => [poi.coordinates.latitude, poi.coordinates.longitude])
+      ]
+    }
 
-    return allLocations.length > 0 ? allLocations : null
+    return locations.length > 0 ? locations : null
   }
 
   // Manual geocoding trigger
@@ -616,6 +692,7 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
     }
   }
 
+  // Calculate bounds (recalculated when selectedDay changes)
   const bounds = calculateBounds()
   const defaultCenter = bounds ? [bounds[0][0], bounds[0][1]] : [46.2044, 6.1432] // Default to Geneva
   
@@ -651,7 +728,7 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
              {/* Day Selector */}
        {tourData.plannedItinerary && tourData.plannedItinerary.length > 0 && (
          <div className="map-controls">
-           <label>Show routes for: </label>
+           <label>Show day: </label>
            <select 
              value={selectedDay} 
              onChange={(e) => setSelectedDay(e.target.value)}
@@ -712,50 +789,65 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
           
           <MapController bounds={bounds} />
 
-          {/* Home Location Marker */}
-          {tourData.homeLocation?.coordinates && (
-            <Marker
-              position={[tourData.homeLocation.coordinates.latitude, tourData.homeLocation.coordinates.longitude]}
-              icon={homeIcon}
-            >
-              <Popup>
-                <strong>🏠 Home</strong><br />
-                {tourData.homeLocation.location}
-              </Popup>
-            </Marker>
-          )}
+          {/* Filtered Location Markers */}
+          {(() => {
+            const locationsToShow = selectedDay === 'all' 
+              ? {
+                  homeLocation: tourData.homeLocation,
+                  overnightStays: tourData.overnightStays,
+                  pois: tourData.pois
+                }
+              : getLocationsForDay(parseInt(selectedDay))
+            
+            return (
+              <>
+                {/* Home Location Marker */}
+                {locationsToShow.homeLocation?.coordinates && (
+                  <Marker
+                    position={[locationsToShow.homeLocation.coordinates.latitude, locationsToShow.homeLocation.coordinates.longitude]}
+                    icon={homeIcon}
+                  >
+                    <Popup>
+                      <strong>🏠 Home</strong><br />
+                      {locationsToShow.homeLocation.location}
+                    </Popup>
+                  </Marker>
+                )}
 
-          {/* Overnight Stays Markers */}
-          {tourData.overnightStays.map(stay => (
-            stay.coordinates && (
-              <Marker
-                key={stay.id}
-                position={[stay.coordinates.latitude, stay.coordinates.longitude]}
-                icon={hotelIcon}
-              >
-                <Popup>
-                  <strong>🏨 Overnight Stay</strong><br />
-                  {stay.location}
-                </Popup>
-              </Marker>
-            )
-          ))}
+                {/* Overnight Stays Markers */}
+                {locationsToShow.overnightStays.map(stay => (
+                  stay.coordinates && (
+                    <Marker
+                      key={stay.id}
+                      position={[stay.coordinates.latitude, stay.coordinates.longitude]}
+                      icon={hotelIcon}
+                    >
+                      <Popup>
+                        <strong>🏨 Overnight Stay</strong><br />
+                        {stay.location}
+                      </Popup>
+                    </Marker>
+                  )
+                ))}
 
-          {/* POI Markers */}
-          {tourData.pois.map(poi => (
-            poi.coordinates && (
-              <Marker
-                key={poi.id}
-                position={[poi.coordinates.latitude, poi.coordinates.longitude]}
-                icon={poiIcon}
-              >
-                <Popup>
-                  <strong>📍 {poi.name}</strong><br />
-                  {poi.category && <em>{poi.category}</em>}
-                </Popup>
-              </Marker>
+                {/* POI Markers */}
+                {locationsToShow.pois.map(poi => (
+                  poi.coordinates && (
+                    <Marker
+                      key={poi.id}
+                      position={[poi.coordinates.latitude, poi.coordinates.longitude]}
+                      icon={poiIcon}
+                    >
+                      <Popup>
+                        <strong>📍 {poi.name}</strong><br />
+                        {poi.category && <em>{poi.category}</em>}
+                      </Popup>
+                    </Marker>
+                  )
+                ))}
+              </>
             )
-          ))}
+          })()}
 
                      {/* Route Lines */}
            {routesToShow.map(dayRoute => 

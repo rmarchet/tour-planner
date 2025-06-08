@@ -2,31 +2,13 @@ import React from 'react'
 import { format } from 'date-fns'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
+import { PDFDayMap } from './PDFDayMap'
 
 export const PDFPreviewModal = ({ isOpen, onClose, tourData }) => {
   if (!isOpen || !tourData.plannedItinerary) return null
 
   const exportToPDF = async () => {
     try {
-      // Create a container for PDF content
-      const element = document.getElementById('pdf-preview-content')
-      if (!element) {
-        console.error('PDF preview content element not found')
-        return
-      }
-
-      // Configure html2canvas options for better quality
-      const canvas = await html2canvas(element, {
-        scale: 2, // Higher resolution
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        width: element.scrollWidth,
-        height: element.scrollHeight
-      })
-
-      const imgData = canvas.toDataURL('image/png')
-      
       // Create PDF
       const pdf = new jsPDF({
         orientation: 'portrait',
@@ -34,24 +16,66 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData }) => {
         format: 'a4'
       })
 
-      // Calculate dimensions
       const imgWidth = 210 // A4 width in mm
       const pageHeight = 295 // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-      let heightLeft = imgHeight
+      let isFirstPage = true
 
-      let position = 0
+             // First, capture and add the header/summary page
+       const headerElement = document.getElementById('pdf-header-summary')
+       if (headerElement) {
+         const headerCanvas = await html2canvas(headerElement, {
+           scale: 1, // Reduced from 2 to 1 for smaller file size
+           useCORS: true,
+           allowTaint: true,
+           backgroundColor: '#ffffff',
+           width: headerElement.scrollWidth,
+           height: headerElement.scrollHeight
+         })
 
-      // Add first page
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
+         const headerImgData = headerCanvas.toDataURL('image/jpeg', 0.8) // Use JPEG with 80% quality
+         const headerImgHeight = (headerCanvas.height * imgWidth) / headerCanvas.width
 
-      // Add additional pages if content is longer than one page
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight
-        pdf.addPage()
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-        heightLeft -= pageHeight
+         pdf.addImage(headerImgData, 'JPEG', 0, 0, imgWidth, headerImgHeight)
+         isFirstPage = false
+       }
+
+      // Then capture and add each day on separate pages
+      for (let i = 0; i < itinerary.length; i++) {
+        const dayElement = document.getElementById(`pdf-day-${i}`)
+        if (!dayElement) {
+          console.warn(`Day element ${i} not found`)
+          continue
+        }
+
+        // Add new page for each day (except if this is the first content)
+        if (!isFirstPage) {
+          pdf.addPage()
+        }
+        isFirstPage = false
+
+                 // Capture the day content
+         const dayCanvas = await html2canvas(dayElement, {
+           scale: 1, // Reduced from 2 to 1 for smaller file size
+           useCORS: true,
+           allowTaint: true,
+           backgroundColor: '#ffffff',
+           width: dayElement.scrollWidth,
+           height: dayElement.scrollHeight
+         })
+
+         const dayImgData = dayCanvas.toDataURL('image/jpeg', 0.8) // Use JPEG with 80% quality
+         const dayImgHeight = (dayCanvas.height * imgWidth) / dayCanvas.width
+
+         // If the day content is too tall for one page, we might need to handle it
+         if (dayImgHeight > pageHeight) {
+           // For very tall content, we'll scale it down to fit the page
+           const scaledHeight = pageHeight - 20 // Leave some margin
+           const scaledWidth = (dayCanvas.width * scaledHeight) / dayCanvas.height
+           pdf.addImage(dayImgData, 'JPEG', (imgWidth - scaledWidth) / 2, 10, scaledWidth, scaledHeight)
+         } else {
+           // Add the day with some top margin
+           pdf.addImage(dayImgData, 'JPEG', 0, 10, imgWidth, dayImgHeight)
+         }
       }
 
       // Save the PDF
@@ -137,38 +161,41 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData }) => {
         
         <div className="pdf-preview-container">
           <div id="pdf-preview-content" className="pdf-preview-content">
-            <div className="pdf-header">
-              <h1>🗺️ Tour Itinerary</h1>
-              <p>Generated on {format(new Date(), 'MMMM dd, yyyy')}</p>
-            </div>
+            {/* Header and Summary - Will be first page */}
+            <div id="pdf-header-summary" className="pdf-header-summary-page">
+              <div className="pdf-header">
+                <h1>🗺️ Tour Itinerary</h1>
+                <p>Generated on {format(new Date(), 'MMMM dd, yyyy')}</p>
+              </div>
 
-            {/* Summary */}
-            <div className="pdf-summary">
-              <div className="summary-row">
-                <div className="summary-item">
-                  <strong>Duration:</strong> {itinerary.length} days
+              {/* Summary */}
+              <div className="pdf-summary">
+                <div className="summary-row">
+                  <div className="summary-item">
+                    <strong>Duration:</strong> {itinerary.length} days
+                  </div>
+                  <div className="summary-item">
+                    <strong>Points of Interest:</strong> {totalPois}
+                  </div>
+                  <div className="summary-item">
+                    <strong>Total Travel Time:</strong> {Math.round(totalTravelTime / 60)}h
+                  </div>
                 </div>
-                <div className="summary-item">
-                  <strong>Points of Interest:</strong> {totalPois}
-                </div>
-                <div className="summary-item">
-                  <strong>Total Travel Time:</strong> {Math.round(totalTravelTime / 60)}h
+                <div className="summary-row">
+                  <div className="summary-item">
+                    <strong>Start Date:</strong> {format(new Date(tourData.startDate), 'MMMM dd, yyyy')}
+                  </div>
+                  <div className="summary-item">
+                    <strong>End Date:</strong> {format(new Date(tourData.endDate), 'MMMM dd, yyyy')}
+                  </div>
                 </div>
               </div>
-              <div className="summary-row">
-                <div className="summary-item">
-                  <strong>Start Date:</strong> {format(new Date(tourData.startDate), 'MMMM dd, yyyy')}
-                </div>
-                <div className="summary-item">
-                  <strong>End Date:</strong> {format(new Date(tourData.endDate), 'MMMM dd, yyyy')}
-                </div>
-              </div>
             </div>
 
-            {/* Daily Schedule */}
+            {/* Daily Schedule - Each day will be a separate page */}
             <div className="pdf-daily-schedule">
               {itinerary.map((day, index) => (
-                <div key={day.date} className={`pdf-day-card ${day.type || 'tour'}`}>
+                <div key={day.date} id={`pdf-day-${index}`} className={`pdf-day-card ${day.type || 'tour'}`}>
                   <div className="pdf-day-header">
                     <h3>Day {index + 1} - {format(new Date(day.date), 'EEEE, MMM dd')}</h3>
                     {day.type && (
@@ -298,6 +325,12 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData }) => {
                         )
                       })()}
                     </div>
+                    
+                    <PDFDayMap 
+                      day={day} 
+                      dayIndex={index} 
+                      tourData={tourData}
+                    />
                   </div>
                 </div>
               ))}
