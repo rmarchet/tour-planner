@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { TourInputPanel } from './TourInputPanel'
 import { SimpleMapDisplay } from './SimpleMapDisplay'
 import { DailyItinerary } from './DailyItinerary'
+import { Header } from './Header'
 
 export const App = () => {
   const [tourData, setTourData] = useState(() => {
@@ -28,10 +29,7 @@ export const App = () => {
 
   return (
     <div className="tour-planner">
-      <header className="header">
-        <h1>🗺️ Tour Planner</h1>
-        <p>Plan your multi-day adventure with ease</p>
-      </header>
+      <Header tourData={tourData} />
       
       <div className="main-content">
         <div className="left-panel">

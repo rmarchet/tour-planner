@@ -476,7 +476,7 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
             <option value="full-day">🕘 Full Day (6-8h)</option>
           </select>
           <button onClick={addPoi} className="add-btn poi-add-btn" disabled={!newPoi.name.trim()}>
-            + Add POI
+            Add
           </button>
         </div>
         

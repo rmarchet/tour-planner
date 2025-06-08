@@ -1,7 +1,5 @@
 import React from 'react'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import html2canvas from 'html2canvas'
 
 export const DailyItinerary = ({ itinerary, startDate }) => {
   
@@ -53,127 +51,7 @@ export const DailyItinerary = ({ itinerary, startDate }) => {
     
     return breakdown
   }
-  const exportToJson = () => {
-    const dataStr = JSON.stringify(itinerary, null, 2)
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr)
-    
-    const exportFileDefaultName = `tour-itinerary-${format(new Date(startDate), 'yyyy-MM-dd')}.json`
-    
-    const linkElement = document.createElement('a')
-    linkElement.setAttribute('href', dataUri)
-    linkElement.setAttribute('download', exportFileDefaultName)
-    linkElement.click()
-  }
 
-  const generateShareableLink = () => {
-    const params = new URLSearchParams()
-    params.set('itinerary', JSON.stringify(itinerary))
-    params.set('startDate', startDate)
-    
-    const shareableUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`
-    
-    navigator.clipboard.writeText(shareableUrl).then(() => {
-      alert('Shareable link copied to clipboard!')
-    }).catch(() => {
-      prompt('Copy this shareable link:', shareableUrl)
-    })
-  }
-
-  const exportToICS = () => {
-    let icsContent = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//Tour Planner//Tour Planner//EN'
-    ]
-
-    itinerary.forEach((day, index) => {
-      const date = new Date(day.date)
-      const dateStr = date.toISOString().replace(/[-:]/g, '').split('T')[0]
-      
-      icsContent.push(
-        'BEGIN:VEVENT',
-        `UID:tour-day-${index}@tourplanner.local`,
-        `DTSTART;VALUE=DATE:${dateStr}`,
-        `DTEND;VALUE=DATE:${dateStr}`,
-        `SUMMARY:Tour Day ${index + 1} - ${day.overnightStay?.location || day.title}`,
-        `DESCRIPTION:${day.type === 'travel' ? day.description : `Overnight: ${day.overnightStay?.location}`}\\n` +
-        `POIs: ${day.pois?.map(poi => poi.name).join(', ') || 'None'}\\n` +
-        `Estimated travel time: ${day.estimatedTravelTime} minutes`,
-        `LOCATION:${day.overnightStay?.location || day.route?.to?.location || 'TBD'}`,
-        'END:VEVENT'
-      )
-    })
-
-    icsContent.push('END:VCALENDAR')
-    
-    const icsBlob = new Blob([icsContent.join('\r\n')], { type: 'text/calendar' })
-    const icsUrl = URL.createObjectURL(icsBlob)
-    
-    const linkElement = document.createElement('a')
-    linkElement.setAttribute('href', icsUrl)
-    linkElement.setAttribute('download', `tour-calendar-${format(new Date(startDate), 'yyyy-MM-dd')}.ics`)
-    linkElement.click()
-    
-    URL.revokeObjectURL(icsUrl)
-  }
-
-  const exportToPDF = async () => {
-    try {
-      // Create a container for PDF content
-      const element = document.getElementById('itinerary-pdf-content')
-      if (!element) {
-        console.error('PDF content element not found')
-        return
-      }
-
-      // Configure html2canvas options for better quality
-      const canvas = await html2canvas(element, {
-        scale: 2, // Higher resolution
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        width: element.scrollWidth,
-        height: element.scrollHeight
-      })
-
-      const imgData = canvas.toDataURL('image/png')
-      
-      // Create PDF
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      })
-
-      // Calculate dimensions
-      const imgWidth = 210 // A4 width in mm
-      const pageHeight = 295 // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-      let heightLeft = imgHeight
-
-      let position = 0
-
-      // Add first page
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
-
-      // Add additional pages if content is longer than one page
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight
-        pdf.addPage()
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-        heightLeft -= pageHeight
-      }
-
-      // Save the PDF
-      const fileName = `tour-itinerary-${format(new Date(startDate), 'yyyy-MM-dd')}.pdf`
-      pdf.save(fileName)
-      
-    } catch (error) {
-      console.error('Error generating PDF:', error)
-      alert('Error generating PDF. Please try again.')
-    }
-  }
 
   const totalTravelTime = itinerary.reduce((total, day) => total + day.estimatedTravelTime, 0)
   const totalPois = itinerary.reduce((total, day) => total + day.pois.length, 0)
@@ -376,25 +254,6 @@ export const DailyItinerary = ({ itinerary, startDate }) => {
           </div>
         ))}
       </div>
-      </div>
-
-      {/* Export Options */}
-      <div className="export-options">
-        <h3>Export Your Itinerary</h3>
-        <div className="export-buttons">
-          <button onClick={generateShareableLink} className="export-btn share-btn">
-            🔗 Share Link
-          </button>
-          <button onClick={exportToPDF} className="export-btn pdf-btn">
-            📄 Download PDF
-          </button>
-          <button onClick={exportToJson} className="export-btn json-btn">
-            📊 Download JSON
-          </button>
-          <button onClick={exportToICS} className="export-btn calendar-btn">
-            📅 Add to Calendar
-          </button>
-        </div>
       </div>
     </div>
   )
