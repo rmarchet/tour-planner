@@ -1,9 +1,7 @@
 import React from 'react'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import html2canvas from 'html2canvas'
 
-export const Header = ({ tourData }) => {
+export const Header = ({ tourData, openPDFPreview }) => {
   const hasItinerary = tourData.plannedItinerary && tourData.plannedItinerary.length > 0
 
   const generateShareableLink = () => {
@@ -92,63 +90,7 @@ export const Header = ({ tourData }) => {
     URL.revokeObjectURL(icsUrl)
   }
 
-  const exportToPDF = async () => {
-    try {
-      // Create a container for PDF content
-      const element = document.getElementById('itinerary-pdf-content')
-      if (!element) {
-        console.error('PDF content element not found')
-        return
-      }
 
-      // Configure html2canvas options for better quality
-      const canvas = await html2canvas(element, {
-        scale: 2, // Higher resolution
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        width: element.scrollWidth,
-        height: element.scrollHeight
-      })
-
-      const imgData = canvas.toDataURL('image/png')
-      
-      // Create PDF
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      })
-
-      // Calculate dimensions
-      const imgWidth = 210 // A4 width in mm
-      const pageHeight = 295 // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-      let heightLeft = imgHeight
-
-      let position = 0
-
-      // Add first page
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
-
-      // Add additional pages if content is longer than one page
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight
-        pdf.addPage()
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-        heightLeft -= pageHeight
-      }
-
-      // Save the PDF
-      const fileName = `tour-itinerary-${format(new Date(tourData.startDate), 'yyyy-MM-dd')}.pdf`
-      pdf.save(fileName)
-      
-    } catch (error) {
-      console.error('Error generating PDF:', error)
-      alert('Error generating PDF. Please try again.')
-    }
-  }
 
   return (
     <header className="header">
@@ -163,7 +105,7 @@ export const Header = ({ tourData }) => {
             <button onClick={generateShareableLink} className="export-btn share-btn">
               🔗 Share
             </button>
-            <button onClick={exportToPDF} className="export-btn pdf-btn">
+            <button onClick={openPDFPreview} className="export-btn pdf-btn">
               📄 PDF
             </button>
             <button onClick={exportToJson} className="export-btn json-btn">

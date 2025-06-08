@@ -3,6 +3,7 @@ import { TourInputPanel } from './TourInputPanel'
 import { SimpleMapDisplay } from './SimpleMapDisplay'
 import { DailyItinerary } from './DailyItinerary'
 import { Header } from './Header'
+import { PDFPreviewModal } from './PDFPreviewModal'
 
 export const App = () => {
   const [tourData, setTourData] = useState(() => {
@@ -17,6 +18,8 @@ export const App = () => {
       plannedItinerary: null
     }
   })
+  
+  const [isPDFPreviewOpen, setIsPDFPreviewOpen] = useState(false)
 
   // Save to localStorage whenever tourData changes
   useEffect(() => {
@@ -27,9 +30,17 @@ export const App = () => {
     setTourData(prev => ({ ...prev, ...updates }))
   }
 
+  const openPDFPreview = () => {
+    setIsPDFPreviewOpen(true)
+  }
+
+  const closePDFPreview = () => {
+    setIsPDFPreviewOpen(false)
+  }
+
   return (
     <div className="tour-planner">
-      <Header tourData={tourData} />
+      <Header tourData={tourData} openPDFPreview={openPDFPreview} />
       
       <div className="main-content">
         <div className="left-panel">
@@ -53,6 +64,12 @@ export const App = () => {
           />
         </div>
       </div>
+      
+      <PDFPreviewModal 
+        isOpen={isPDFPreviewOpen}
+        onClose={closePDFPreview}
+        tourData={tourData}
+      />
     </div>
   )
 }
