@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
 import { format, addDays, differenceInDays } from 'date-fns'
+import { POIDiscovery } from './POIDiscovery'
 
 export const TourInputPanel = ({ tourData, updateTourData }) => {
   const [newOvernightStay, setNewOvernightStay] = useState('')
-  const [newPoi, setNewPoi] = useState({ name: '', category: '', duration: 'half-day' })
+  const [newPoi, setNewPoi] = useState({ name: '', category: '', duration: 'half-day', type: 'main', nearMainPOI: '' })
   const [homeLocationInput, setHomeLocationInput] = useState(tourData.homeLocation?.location || '')
 
   const handleDateChange = (field, value) => {
@@ -39,15 +40,30 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
 
   const addPoi = () => {
     if (newPoi.name.trim()) {
-      const updatedPois = [...tourData.pois, {
+      // Validation for secondary POIs
+      if (newPoi.type === 'secondary' && !newPoi.nearMainPOI) {
+        alert('Please select which main POI this secondary POI is related to.')
+        return
+      }
+
+      const newPoiData = {
         id: Date.now(),
         name: newPoi.name.trim(),
         category: newPoi.category.trim() || 'General',
         duration: newPoi.duration,
-        coordinates: null // Will be set when geocoded
-      }]
+        coordinates: null, // Will be set when geocoded
+        type: newPoi.type
+      }
+
+      // Add nearMainPOI field only for secondary POIs
+      if (newPoi.type === 'secondary') {
+        newPoiData.nearMainPOI = newPoi.nearMainPOI
+        newPoiData.source = 'Manual'
+      }
+
+      const updatedPois = [...tourData.pois, newPoiData]
       updateTourData({ pois: updatedPois })
-      setNewPoi({ name: '', category: '', duration: 'half-day' })
+      setNewPoi({ name: '', category: '', duration: 'half-day', type: 'main', nearMainPOI: '' })
     }
   }
 
@@ -113,7 +129,7 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
     if (canIncludeActivitiesOnFirstDay) tourDays += 1
     if (canIncludeActivitiesOnLastDay) tourDays += 1
     
-    // Optimized POI distribution with geographic clustering and duration balancing
+    // Optimized POI distribution with main/secondary POI hierarchy and geographic clustering
     const distributePOIsByDuration = (pois, availableDays) => {
       if (pois.length === 0) return []
       
@@ -140,34 +156,98 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
         return R * c
       }
       
-      // Step 1: Separate full-day POIs (they need their own day)
-      const fullDayPOIs = pois.filter(poi => (poi.duration || 'half-day') === 'full-day')
-      const otherPOIs = pois.filter(poi => (poi.duration || 'half-day') !== 'full-day')
+      // Step 1: Separate main and secondary POIs
+      const mainPOIs = pois.filter(poi => poi.type !== 'secondary')
+      const secondaryPOIs = pois.filter(poi => poi.type === 'secondary')
       
-      console.log(`Optimizing ${pois.length} POIs: ${fullDayPOIs.length} full-day, ${otherPOIs.length} others`)
+      console.log(`Optimizing ${pois.length} POIs: ${mainPOIs.length} main, ${secondaryPOIs.length} secondary`)
       
-      // Step 2: Group other POIs by geographic proximity using simple clustering
-      const clusterPOIs = (poisToCluster) => {
-        if (poisToCluster.length === 0) return []
-        if (poisToCluster.length === 1) return [poisToCluster]
+      // Step 2: Create POI groups (main POI + its secondary POIs)
+      const createPOIGroups = () => {
+        const groups = []
+        
+        // Create groups for main POIs
+        mainPOIs.forEach(mainPOI => {
+          const group = {
+            mainPOI: mainPOI,
+            secondaryPOIs: [],
+            totalHours: getHours(mainPOI.duration || 'half-day')
+          }
+          
+          // Find secondary POIs that belong to this main POI
+          secondaryPOIs.forEach(secondaryPOI => {
+            if (secondaryPOI.nearMainPOI === mainPOI.name) {
+              group.secondaryPOIs.push(secondaryPOI)
+              group.totalHours += getHours(secondaryPOI.duration || 'half-day')
+            }
+          })
+          
+          groups.push(group)
+        })
+        
+        // Handle orphaned secondary POIs (secondary POIs without a matching main POI)
+        const orphanedSecondaryPOIs = secondaryPOIs.filter(secondaryPOI => 
+          !mainPOIs.some(mainPOI => mainPOI.name === secondaryPOI.nearMainPOI)
+        )
+        
+        if (orphanedSecondaryPOIs.length > 0) {
+          console.warn(`Found ${orphanedSecondaryPOIs.length} orphaned secondary POIs`)
+          // Treat orphaned secondary POIs as individual groups
+          orphanedSecondaryPOIs.forEach(orphanedPOI => {
+            groups.push({
+              mainPOI: orphanedPOI,
+              secondaryPOIs: [],
+              totalHours: getHours(orphanedPOI.duration || 'half-day')
+            })
+          })
+        }
+        
+        return groups
+      }
+      
+      const poiGroups = createPOIGroups()
+      console.log('Created POI groups:', poiGroups.map(g => 
+        `${g.mainPOI.name} + ${g.secondaryPOIs.length} secondary (${g.totalHours.toFixed(1)}h)`
+      ))
+      
+      // Step 3: Separate full-day groups and others
+      const hoursPerDay = 8
+      const fullDayGroups = poiGroups.filter(group => group.totalHours >= 6) // Groups that need their own day
+      const otherGroups = poiGroups.filter(group => group.totalHours < 6)
+      
+      console.log(`${fullDayGroups.length} full-day groups, ${otherGroups.length} other groups`)
+      
+      // Step 4: Create daily schedules
+      const dailyPOIs = []
+      
+      // Add full-day groups first (each gets its own day)
+      fullDayGroups.forEach(group => {
+        const dayPOIs = [group.mainPOI, ...group.secondaryPOIs]
+        dailyPOIs.push(dayPOIs)
+      })
+      
+      // Step 5: Cluster other groups by geography
+      const clusterGroupsByGeography = (groupsToCluster) => {
+        if (groupsToCluster.length === 0) return []
+        if (groupsToCluster.length === 1) return [groupsToCluster]
         
         const clusters = []
         const used = new Set()
         
-        for (const poi of poisToCluster) {
-          if (used.has(poi.id)) continue
+        for (const group of groupsToCluster) {
+          if (used.has(group.mainPOI.id)) continue
           
-          const cluster = [poi]
-          used.add(poi.id)
+          const cluster = [group]
+          used.add(group.mainPOI.id)
           
-          // Find nearby POIs (within reasonable distance)
-          for (const otherPoi of poisToCluster) {
-            if (used.has(otherPoi.id)) continue
+          // Find nearby groups (within reasonable distance)
+          for (const otherGroup of groupsToCluster) {
+            if (used.has(otherGroup.mainPOI.id)) continue
             
-            const distance = calculateDistance(poi.coordinates, otherPoi.coordinates)
+            const distance = calculateDistance(group.mainPOI.coordinates, otherGroup.mainPOI.coordinates)
             if (distance < 20) { // Within 20km - adjust as needed
-              cluster.push(otherPoi)
-              used.add(otherPoi.id)
+              cluster.push(otherGroup)
+              used.add(otherGroup.mainPOI.id)
             }
           }
           
@@ -177,44 +257,37 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
         return clusters
       }
       
-      // Step 3: Create optimal day combinations
-      const dailyPOIs = []
-      const hoursPerDay = 8
+      const groupClusters = clusterGroupsByGeography(otherGroups)
+      console.log(`Created ${groupClusters.length} group clusters`)
       
-      // Add full-day POIs first (each gets its own day)
-      fullDayPOIs.forEach(poi => {
-        dailyPOIs.push([poi])
-      })
-      
-      // Cluster remaining POIs by geography
-      const clusters = clusterPOIs(otherPOIs)
-      console.log(`Created ${clusters.length} geographic clusters`)
-      
-      // Step 4: Combine clusters into daily schedules
-      let remainingDays = availableDays - fullDayPOIs.length
+      // Step 6: Distribute group clusters across remaining days
+      let remainingDays = availableDays - fullDayGroups.length
       
       if (remainingDays <= 0) {
-        console.warn('Not enough days for all POIs - some full-day POIs may be truncated')
+        console.warn('Not enough days for all POI groups - some groups may be truncated')
         return dailyPOIs.slice(0, availableDays)
       }
       
-      // Sort clusters by total duration and geographic spread
-      clusters.sort((a, b) => {
-        const aHours = a.reduce((sum, poi) => sum + getHours(poi.duration || 'half-day'), 0)
-        const bHours = b.reduce((sum, poi) => sum + getHours(poi.duration || 'half-day'), 0)
+      // Sort clusters by total duration
+      groupClusters.sort((a, b) => {
+        const aHours = a.reduce((sum, group) => sum + group.totalHours, 0)
+        const bHours = b.reduce((sum, group) => sum + group.totalHours, 0)
         return bHours - aHours // Prioritize clusters with more content
       })
       
-      // Distribute clusters across remaining days
-      for (const cluster of clusters) {
-        const clusterHours = cluster.reduce((sum, poi) => sum + getHours(poi.duration || 'half-day'), 0)
+      // Distribute group clusters across remaining days
+      for (const cluster of groupClusters) {
+        const clusterHours = cluster.reduce((sum, group) => sum + group.totalHours, 0)
         
         // Try to find a day with compatible remaining capacity
         let assignedToExistingDay = false
-        for (let i = fullDayPOIs.length; i < dailyPOIs.length; i++) {
+        for (let i = fullDayGroups.length; i < dailyPOIs.length; i++) {
           const dayHours = dailyPOIs[i].reduce((sum, poi) => sum + getHours(poi.duration || 'half-day'), 0)
           if (dayHours + clusterHours <= hoursPerDay) {
-            dailyPOIs[i].push(...cluster)
+            // Add all POIs from the cluster groups to this day
+            cluster.forEach(group => {
+              dailyPOIs[i].push(group.mainPOI, ...group.secondaryPOIs)
+            })
             assignedToExistingDay = true
             break
           }
@@ -223,12 +296,16 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
         // If no existing day can fit it, create a new day
         if (!assignedToExistingDay) {
           if (dailyPOIs.length < availableDays) {
-            dailyPOIs.push([...cluster])
+            const newDayPOIs = []
+            cluster.forEach(group => {
+              newDayPOIs.push(group.mainPOI, ...group.secondaryPOIs)
+            })
+            dailyPOIs.push(newDayPOIs)
           } else {
             // No more days available, add to the least full day
-            let leastFullIndex = fullDayPOIs.length
+            let leastFullIndex = fullDayGroups.length
             let minHours = Infinity
-            for (let i = fullDayPOIs.length; i < dailyPOIs.length; i++) {
+            for (let i = fullDayGroups.length; i < dailyPOIs.length; i++) {
               const dayHours = dailyPOIs[i].reduce((sum, poi) => sum + getHours(poi.duration || 'half-day'), 0)
               if (dayHours < minHours) {
                 minHours = dayHours
@@ -236,44 +313,86 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
               }
             }
             if (leastFullIndex < dailyPOIs.length) {
-              dailyPOIs[leastFullIndex].push(...cluster)
+              cluster.forEach(group => {
+                dailyPOIs[leastFullIndex].push(group.mainPOI, ...group.secondaryPOIs)
+              })
             }
           }
         }
       }
       
-      // Step 5: Optimize POI order within each day to minimize travel time
+      // Step 7: Optimize POI order within each day (keeping main POI + secondaries together)
       dailyPOIs.forEach(dayPOIs => {
         if (dayPOIs.length <= 1) return
         
-        // Simple nearest-neighbor optimization
-        const optimizedOrder = [dayPOIs[0]]
-        const remaining = dayPOIs.slice(1)
+        // Group POIs by their main POI relationship
+        const dayGroups = []
+        const processedPOIs = new Set()
         
-        while (remaining.length > 0) {
-          const current = optimizedOrder[optimizedOrder.length - 1]
-          let nearestIndex = 0
-          let nearestDistance = Infinity
+        dayPOIs.forEach(poi => {
+          if (processedPOIs.has(poi.id)) return
           
-          remaining.forEach((poi, index) => {
-            const distance = calculateDistance(current.coordinates, poi.coordinates)
-            if (distance < nearestDistance) {
-              nearestDistance = distance
-              nearestIndex = index
-            }
+          if (poi.type !== 'secondary') {
+            // This is a main POI, find its secondary POIs
+            const group = [poi]
+            processedPOIs.add(poi.id)
+            
+            dayPOIs.forEach(otherPOI => {
+              if (otherPOI.type === 'secondary' && otherPOI.nearMainPOI === poi.name) {
+                group.push(otherPOI)
+                processedPOIs.add(otherPOI.id)
+              }
+            })
+            
+            dayGroups.push(group)
+          } else if (!processedPOIs.has(poi.id)) {
+            // Orphaned secondary POI
+            dayGroups.push([poi])
+            processedPOIs.add(poi.id)
+          }
+        })
+        
+        // Optimize order of groups, keeping main+secondary POIs together
+        if (dayGroups.length > 1) {
+          const optimizedGroupOrder = [dayGroups[0]]
+          const remainingGroups = dayGroups.slice(1)
+          
+          while (remainingGroups.length > 0) {
+            const currentGroup = optimizedGroupOrder[optimizedGroupOrder.length - 1]
+            const currentMainPOI = currentGroup[0] // First POI in group is always main POI
+            let nearestIndex = 0
+            let nearestDistance = Infinity
+            
+            remainingGroups.forEach((group, index) => {
+              const groupMainPOI = group[0]
+              const distance = calculateDistance(currentMainPOI.coordinates, groupMainPOI.coordinates)
+              if (distance < nearestDistance) {
+                nearestDistance = distance
+                nearestIndex = index
+              }
+            })
+            
+            optimizedGroupOrder.push(remainingGroups[nearestIndex])
+            remainingGroups.splice(nearestIndex, 1)
+          }
+          
+          // Flatten the optimized groups back into a single array
+          const optimizedDayPOIs = []
+          optimizedGroupOrder.forEach(group => {
+            optimizedDayPOIs.push(...group)
           })
           
-          optimizedOrder.push(remaining[nearestIndex])
-          remaining.splice(nearestIndex, 1)
+          // Replace the day's POIs with the optimized order
+          dayPOIs.splice(0, dayPOIs.length, ...optimizedDayPOIs)
         }
-        
-        // Replace the day's POIs with the optimized order
-        dayPOIs.splice(0, dayPOIs.length, ...optimizedOrder)
       })
       
-      console.log('Optimized daily distribution:', dailyPOIs.map((day, i) => 
-        `Day ${i + 1}: ${day.length} POIs, ${day.reduce((sum, poi) => sum + getHours(poi.duration || 'half-day'), 0).toFixed(1)}h`
-      ))
+      console.log('Optimized daily distribution:', dailyPOIs.map((day, i) => {
+        const mainCount = day.filter(poi => poi.type !== 'secondary').length
+        const secondaryCount = day.filter(poi => poi.type === 'secondary').length
+        const totalHours = day.reduce((sum, poi) => sum + getHours(poi.duration || 'half-day'), 0)
+        return `Day ${i + 1}: ${mainCount} main + ${secondaryCount} secondary POIs, ${totalHours.toFixed(1)}h`
+      }))
       
       return dailyPOIs
     }
@@ -446,37 +565,84 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
       {/* Points of Interest */}
       <div className="section">
         <h3>📍 Points of Interest ({tourData.pois.length})</h3>
+        <div className="poi-hierarchy-info">
+          <small>
+            <strong>Main POIs:</strong> {tourData.pois.filter(poi => poi.type !== 'secondary').length} 
+            {tourData.pois.filter(poi => poi.type === 'secondary').length > 0 && (
+              <span> | <strong>Secondary POIs:</strong> {tourData.pois.filter(poi => poi.type === 'secondary').length}</span>
+            )}
+          </small>
+        </div>
         {tourData.pois.length > 1 && (
           <div className="optimization-notice">
             <small>💡 POIs will be optimized by location and duration when generating the itinerary</small>
           </div>
         )}
         <div className="add-item poi-add">
-          <input
-            type="text"
-            placeholder="POI name (e.g., Eiffel Tower)"
-            value={newPoi.name}
-            onChange={(e) => setNewPoi(prev => ({ ...prev, name: e.target.value }))}
-            onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && addPoi()}
-          />
-          <input
-            type="text"
-            placeholder="Category (e.g., Monument)"
-            value={newPoi.category}
-            onChange={(e) => setNewPoi(prev => ({ ...prev, category: e.target.value }))}
-            onKeyPress={(e) => e.key === 'Enter' && addPoi()}
-          />
-          <select
-            value={newPoi.duration}
-            onChange={(e) => setNewPoi(prev => ({ ...prev, duration: e.target.value }))}
-            title="How long to spend at this POI"
+          <div className="poi-form-row">
+            <input
+              type="text"
+              placeholder="POI name (e.g., Eiffel Tower)"
+              value={newPoi.name}
+              onChange={(e) => setNewPoi(prev => ({ ...prev, name: e.target.value }))}
+              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && addPoi()}
+              className="poi-name-input"
+            />
+            <input
+              type="text"
+              placeholder="Category (e.g., Monument)"
+              value={newPoi.category}
+              onChange={(e) => setNewPoi(prev => ({ ...prev, category: e.target.value }))}
+              onKeyPress={(e) => e.key === 'Enter' && addPoi()}
+              className="poi-category-input"
+            />
+          </div>
+          
+          <div className="poi-form-row">
+            <select
+              value={newPoi.type}
+              onChange={(e) => setNewPoi(prev => ({ ...prev, type: e.target.value, nearMainPOI: e.target.value === 'main' ? '' : prev.nearMainPOI }))}
+              title="POI type"
+              className="poi-type-select"
+            >
+              <option value="main">📍 Main POI</option>
+              <option value="secondary">↳ Secondary POI</option>
+            </select>
+            
+            {newPoi.type === 'secondary' && (
+              <select
+                value={newPoi.nearMainPOI}
+                onChange={(e) => setNewPoi(prev => ({ ...prev, nearMainPOI: e.target.value }))}
+                title="Which main POI is this related to?"
+                className="poi-main-select"
+              >
+                <option value="">Select main POI...</option>
+                {tourData.pois.filter(poi => poi.type !== 'secondary').map(mainPoi => (
+                  <option key={mainPoi.id} value={mainPoi.name}>
+                    {mainPoi.name} ({mainPoi.category})
+                  </option>
+                ))}
+              </select>
+            )}
+            
+            <select
+              value={newPoi.duration}
+              onChange={(e) => setNewPoi(prev => ({ ...prev, duration: e.target.value }))}
+              title="How long to spend at this POI"
+              className="poi-duration-select"
+            >
+              <option value="quick">⚡ Quick Visit (1-2h)</option>
+              <option value="half-day">🕐 Half Day (3-4h)</option>
+              <option value="full-day">🕘 Full Day (6-8h)</option>
+            </select>
+          </div>
+          
+          <button 
+            onClick={addPoi} 
+            className="add-btn poi-add-btn" 
+            disabled={!newPoi.name.trim() || (newPoi.type === 'secondary' && !newPoi.nearMainPOI)}
           >
-            <option value="quick">⚡ Quick Visit (1-2h)</option>
-            <option value="half-day">🕐 Half Day (3-4h)</option>
-            <option value="full-day">🕘 Full Day (6-8h)</option>
-          </select>
-          <button onClick={addPoi} className="add-btn poi-add-btn" disabled={!newPoi.name.trim()}>
-            Add
+            Add {newPoi.type === 'secondary' ? 'Secondary' : 'Main'} POI
           </button>
         </div>
         
@@ -488,10 +654,16 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
             </div>
           ) : (
             tourData.pois.map(poi => (
-              <div key={poi.id} className="item poi-item-detailed">
+              <div key={poi.id} className={`item poi-item-detailed ${poi.type === 'secondary' ? 'secondary-poi' : 'main-poi'}`}>
                 <div className="poi-main-info">
+                  <span className="poi-type-indicator">
+                    {poi.type === 'secondary' ? '↳' : '📍'}
+                  </span>
                   <span className="poi-name">{poi.name}</span>
                   {poi.category && <span className="poi-category">({poi.category})</span>}
+                  {poi.type === 'secondary' && poi.nearMainPOI && (
+                    <span className="poi-relation">near {poi.nearMainPOI}</span>
+                  )}
                 </div>
                 <div className="poi-meta">
                   <select
@@ -538,6 +710,9 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
           </div>
         )}
       </div>
+
+      {/* POI Discovery */}
+      <POIDiscovery tourData={tourData} updateTourData={updateTourData} />
 
       {/* Generate Button */}
       <div className="section">

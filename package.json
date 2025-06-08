@@ -1,9 +1,9 @@
 {
-  "name": "react-rollup-template",
+  "name": "tour-planner",
   "version": "0.8.0",
-  "description": "Template for React Single Page Applications bundled with Rollup",
+  "description": "Tour planner web app",
   "main": "index.js",
-  "repository": "https://github.com/rmarchet/react-rollup-template.git",
+  "repository": "https://github.com/rmarchet/tour-planner.git",
   "author": "rmarchet@gmail.com",
   "license": "MIT",
   "devDependencies": {

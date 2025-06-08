@@ -1,7 +1,7 @@
 import React from 'react'
 import { format } from 'date-fns'
 
-export const Header = ({ tourData, openPDFPreview }) => {
+export const Header = ({ tourData, openPDFPreview, updateTourData }) => {
   const hasItinerary = tourData.plannedItinerary && tourData.plannedItinerary.length > 0
 
   const generateShareableLink = () => {
@@ -90,6 +90,83 @@ export const Header = ({ tourData, openPDFPreview }) => {
     URL.revokeObjectURL(icsUrl)
   }
 
+  const importFromJson = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    input.onchange = (event) => {
+      const file = event.target.files[0]
+      if (!file) return
+
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const importedData = JSON.parse(e.target.result)
+          
+          // Validate the imported data structure
+          if (!validateTourData(importedData)) {
+            alert('Invalid tour data format. Please select a valid tour JSON file.')
+            return
+          }
+
+          // Confirm with user before replacing current data
+          const hasCurrentData = tourData.startDate || tourData.overnightStays.length > 0 || tourData.pois.length > 0
+          if (hasCurrentData) {
+            const confirmImport = confirm(
+              'Importing will replace your current tour data. Are you sure you want to continue?'
+            )
+            if (!confirmImport) return
+          }
+
+          // Update the tour data
+          updateTourData(importedData)
+          alert('Tour data imported successfully!')
+          
+        } catch (error) {
+          console.error('Import error:', error)
+          alert('Error reading file. Please ensure it\'s a valid JSON file.')
+        }
+      }
+      reader.readAsText(file)
+    }
+    input.click()
+  }
+
+  // Validate imported tour data structure
+  const validateTourData = (data) => {
+    try {
+      // Check for required top-level properties
+      if (typeof data !== 'object' || data === null) return false
+      
+      // Check arrays exist and are arrays
+      if (!Array.isArray(data.overnightStays)) return false
+      if (!Array.isArray(data.pois)) return false
+      
+      // Check home location structure (if present)
+      if (data.homeLocation && typeof data.homeLocation !== 'object') return false
+      
+      // Check overnight stays structure
+      for (const stay of data.overnightStays) {
+        if (!stay.id || !stay.location) return false
+      }
+      
+      // Check POIs structure
+      for (const poi of data.pois) {
+        if (!poi.id || !poi.name) return false
+        // Validate POI type hierarchy
+        if (poi.type === 'secondary' && !poi.nearMainPOI) return false
+      }
+      
+      // Check dates are valid (if present)
+      if (data.startDate && isNaN(new Date(data.startDate))) return false
+      if (data.endDate && isNaN(new Date(data.endDate))) return false
+      
+      return true
+    } catch (error) {
+      return false
+    }
+  }
+
 
 
   return (
@@ -100,22 +177,27 @@ export const Header = ({ tourData, openPDFPreview }) => {
           <p>Plan your multi-day adventure with ease</p>
         </div>
         
-        {hasItinerary && (
-          <div className="header-export-buttons">
-            <button onClick={generateShareableLink} className="export-btn share-btn">
-              🔗 Share
-            </button>
-            <button onClick={openPDFPreview} className="export-btn pdf-btn">
-              📄 PDF
-            </button>
-            <button onClick={exportToJson} className="export-btn json-btn">
-              📊 JSON
-            </button>
-            <button onClick={exportToICS} className="export-btn calendar-btn">
-              📅 Calendar
-            </button>
-          </div>
-        )}
+        <div className="header-export-buttons">
+          <button onClick={importFromJson} className="export-btn import-btn">
+            📥 Import
+          </button>
+          {hasItinerary && (
+            <>
+              <button onClick={generateShareableLink} className="export-btn share-btn">
+                🔗 Share
+              </button>
+              <button onClick={openPDFPreview} className="export-btn pdf-btn">
+                📄 PDF
+              </button>
+              <button onClick={exportToJson} className="export-btn json-btn">
+                📊 Export
+              </button>
+              <button onClick={exportToICS} className="export-btn calendar-btn">
+                📅 Calendar
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </header>
   )

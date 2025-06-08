@@ -284,14 +284,57 @@ body {
 }
 
 .poi-add {
-  display: grid;
-  background-color: #eee;
-  padding: 0.5rem;
-  border-radius: 0.5rem;
-  margin-bottom: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  background-color: #f8fafc;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  border: 1px solid #e2e8f0;
+  gap: 0.75rem;
 }
 
-/* POI add form with duration */
+.poi-form-row {
+  display: grid;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.poi-form-row:first-child {
+  grid-template-columns: 2fr 1.5fr;
+}
+
+.poi-form-row:nth-child(2) {
+  grid-template-columns: auto 1fr auto;
+}
+
+.poi-name-input,
+.poi-category-input,
+.poi-type-select,
+.poi-main-select,
+.poi-duration-select {
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  background: white;
+}
+
+.poi-name-input:focus,
+.poi-category-input:focus,
+.poi-type-select:focus,
+.poi-main-select:focus,
+.poi-duration-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.poi-main-select {
+  min-width: 200px;
+}
+
+/* POI add form with duration (legacy selector) */
 .poi-add select {
   padding: 0.5rem;
   border: 1px solid #e2e8f0;
@@ -1184,6 +1227,15 @@ body {
   background: #dd6b20;
 }
 
+.import-btn {
+  background: #38a169;
+  color: white;
+}
+
+.import-btn:hover {
+  background: #2f855a;
+}
+
 /* PDF Preview Modal */
 .pdf-preview-modal-overlay {
   position: fixed;
@@ -1685,4 +1737,292 @@ body {
 
 .left-panel::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
+}
+
+/* POI Discovery Styles */
+.poi-discovery {
+  margin: 1rem 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.poi-discovery-header {
+  padding: 0.75rem 1rem;
+  background: #f7fafc;
+  border-bottom: 1px solid #e2e8f0;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+}
+
+.poi-discovery-header:hover {
+  background: #edf2f7;
+}
+
+.poi-discovery-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: #2d3748;
+}
+
+.expand-btn {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: #718096;
+  cursor: pointer;
+  padding: 0.25rem;
+}
+
+.poi-discovery-content {
+  padding: 1rem;
+}
+
+.discovery-controls {
+  margin-bottom: 1rem;
+}
+
+.control-group {
+  margin-bottom: 1rem;
+}
+
+.control-group label {
+  display: block;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+.location-select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.category-checkboxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.5rem;
+}
+
+.category-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.category-checkbox input[type="checkbox"] {
+  margin: 0;
+}
+
+.radius-slider {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.discover-btn {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.discover-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.discover-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.discover-all-btn {
+  background: #7c3aed;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.discover-all-btn:hover:not(:disabled) {
+  background: #6d28d9;
+}
+
+.discover-all-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.discovery-error {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 0.75rem;
+  border-radius: 4px;
+  border: 1px solid #fecaca;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.discovery-results {
+  margin-top: 1rem;
+}
+
+.discovery-results h5 {
+  margin: 0 0 0.75rem 0;
+  color: #374151;
+  font-size: 0.95rem;
+}
+
+.discovered-pois-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+}
+
+.discovered-poi-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background-color 0.2s;
+}
+
+.discovered-poi-item:last-child {
+  border-bottom: none;
+}
+
+.discovered-poi-item:hover {
+  background: #f9fafb;
+}
+
+.poi-info {
+  flex: 1;
+}
+
+.poi-name {
+  font-weight: 500;
+  color: #111827;
+  margin-bottom: 0.25rem;
+}
+
+.poi-meta {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.poi-category {
+  background: #e0e7ff;
+  color: #3730a3;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.poi-distance {
+  color: #059669;
+}
+
+.poi-duration {
+  color: #7c2d12;
+}
+
+.poi-near-main {
+  color: #8b5cf6;
+  font-style: italic;
+}
+
+.add-poi-btn {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.2s;
+  min-width: 40px;
+}
+
+.add-poi-btn:hover {
+  background: #059669;
+}
+
+.discovery-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e5e7eb;
+  border-radius: 50%;
+  border-top-color: #3b82f6;
+  animation: spin 1s linear infinite;
+}
+
+.text-muted {
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+/* POI Hierarchy Styles */
+.poi-hierarchy-info {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border-left: 3px solid #3b82f6;
+}
+
+.poi-hierarchy-info small {
+  color: #4b5563;
+  font-size: 0.8rem;
+}
+
+.main-poi {
+  border-left: 3px solid #10b981;
+}
+
+.secondary-poi {
+  border-left: 3px solid #8b5cf6;
+  background: #faf5ff;
+}
+
+.poi-type-indicator {
+  margin-right: 0.5rem;
+  font-size: 1rem;
+}
+
+.poi-relation {
+  font-size: 0.75rem;
+  color: #8b5cf6;
+  font-style: italic;
+  margin-left: 0.5rem;
 }

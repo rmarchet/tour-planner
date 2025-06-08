@@ -1,20 +1,23 @@
 # TODO
 
-- [ ] routes calculation 
-  - [ ] should not be straight lines
+- [x] routes calculation 
+  - [x] should not be straight lines
   - [x] smarter algorithm
   - [x] loading spinner while routes are calculated
 
-- [ ] import JSON
+- [x] import JSON
 - [ ] export PDF
   - [x] better pagination
   - [x] map of the route for each day
   - [x] map larger and without zoom controls
   - [x] map exported to PDF has messed overlay
 - [x] tour map filtered by day shows only the locations of that date
+- [ ] Main map
+  - [ ] only update routes when manually click "Generate Tour Plan"
+  - [ ] view names of main POIs directly on the map
 - [ ] sidebar
   - [ ] start date and end date input fields on the same row
-  - [ ] possibility to add sub-POI for each POI
+  - [x] possibility to add sub-POI for each POI
   - [ ] possibility to drag and sort POI manually
 
 ## Routes

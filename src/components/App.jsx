@@ -40,7 +40,7 @@ export const App = () => {
 
   return (
     <div className="tour-planner">
-      <Header tourData={tourData} openPDFPreview={openPDFPreview} />
+      <Header tourData={tourData} openPDFPreview={openPDFPreview} updateTourData={updateTourData} />
       
       <div className="main-content">
         <div className="left-panel">
