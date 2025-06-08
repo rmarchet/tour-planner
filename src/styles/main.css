@@ -1515,10 +1515,43 @@ body {
   font-weight: 600;
 }
 
+.pdf-day-map-wrapper {
+  position: relative;
+}
+
 .pdf-day-map {
   width: 100%;
   height: 280px;
   background: #f7fafc;
+}
+
+.pdf-map-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(52, 152, 219, 0.95);
+  color: white;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  z-index: 1000;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 3px 15px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.pdf-map-loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s ease-in-out infinite;
 }
 
 .pdf-day-map-placeholder {

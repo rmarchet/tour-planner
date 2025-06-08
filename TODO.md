@@ -3,7 +3,7 @@
 - [ ] routes calculation 
   - [ ] should not be straight lines
   - [x] smarter algorithm
-  - [ ] loading spinner while routes are calculated
+  - [x] loading spinner while routes are calculated
 
 - [ ] import JSON
 - [ ] export PDF
