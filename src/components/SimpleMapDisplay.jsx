@@ -12,10 +12,10 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 })
 
-// Color palette for different days
+// Color palette for different days - brighter, high-contrast colors
 const dayColors = [
-  '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57',
-  '#FF9FF3', '#54A0FF', '#5F27CD', '#00D2D3', '#FF9F43'
+  '#E74C3C', '#2ECC71', '#3498DB', '#F39C12', '#9B59B6',
+  '#E91E63', '#00BCD4', '#FF5722', '#4CAF50', '#FF9800'
 ]
 
 // Custom icons for different location types
@@ -50,6 +50,7 @@ const MapController = ({ bounds }) => {
 
 export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
   const [geocodingInProgress, setGeocodingInProgress] = useState(false)
+  const [routingInProgress, setRoutingInProgress] = useState(false)
   const [routes, setRoutes] = useState([])
   const [selectedDay, setSelectedDay] = useState('all')
   const isGeocodingRef = useRef(false)
@@ -108,38 +109,59 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
     return null
   }
 
-  // Get route between two points
+  // Get route between two points using OSRM (real road routing)
   const getRoute = async (start, end, profile = 'driving-car') => {
-    // Due to CORS limitations with demo API key, we'll use direct line routes
-    // In production, use a proper API key or implement server-side routing
-    
     console.log(`Getting ${profile} route from [${start.latitude}, ${start.longitude}] to [${end.latitude}, ${end.longitude}]`)
     
-    // For now, return direct line route
-    // This provides visual connection between points on the map
+    // Direct line route as fallback
     const directRoute = [[start.latitude, start.longitude], [end.latitude, end.longitude]]
     
-    // Optional: Try API call but fallback gracefully
-    if (ROUTING_API_KEY && ROUTING_API_KEY !== 'demo') {
-      try {
-        const response = await fetch(
-          `${ROUTING_URL}/${profile}?api_key=${ROUTING_API_KEY}&start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}`
-        )
+    try {
+      // Convert profile to OSRM format
+      const osrmProfile = profile === 'foot-walking' ? 'walking' : 'driving'
+      
+      // OSRM API format: {service}/{version}/{profile}/{coordinates}?options
+      const coordinates = `${start.longitude},${start.latitude};${end.longitude},${end.latitude}`
+      const osrmUrl = `${ROUTING_URL}/${osrmProfile}/${coordinates}?overview=full&geometries=geojson`
+      
+      console.log(`Calling OSRM API: ${osrmUrl}`)
+      
+      const response = await fetch(osrmUrl)
+      
+      if (response.ok) {
+        const data = await response.json()
+        console.log('OSRM response:', data)
         
-        if (response.ok) {
-          const data = await response.json()
-          if (data.features && data.features[0] && data.features[0].geometry) {
-            console.log(`✅ Got detailed ${profile} route from API`)
-            return data.features[0].geometry.coordinates.map(coord => [coord[1], coord[0]])
+        if (data.routes && data.routes[0] && data.routes[0].geometry && data.routes[0].geometry.coordinates) {
+          const routeCoordinates = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]])
+          const distance = data.routes[0].distance / 1000 // Convert meters to km
+          const duration = data.routes[0].duration / 60 // Convert seconds to minutes
+          
+          console.log(`✅ Got real ${profile} route from OSRM:`, { 
+            points: routeCoordinates.length, 
+            distance: distance.toFixed(2) + 'km',
+            duration: duration.toFixed(0) + 'min'
+          })
+          
+          return {
+            coordinates: routeCoordinates,
+            distance: distance,
+            duration: duration
           }
         }
-      } catch (error) {
-        console.warn(`API routing failed for ${profile}, using direct line:`, error.message)
+      } else {
+        console.warn(`OSRM API returned ${response.status}: ${response.statusText}`)
       }
+    } catch (error) {
+      console.warn(`OSRM routing failed for ${profile}, using direct line:`, error.message)
     }
     
     console.log(`Using direct line route for ${profile}`)
-    return directRoute
+    return {
+      coordinates: directRoute,
+      distance: calculateDistance(start, end, profile === 'foot-walking' ? 'walking' : 'driving'),
+      duration: null
+    }
   }
 
   // Calculate distance between two points (in km)
@@ -245,6 +267,7 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
       }
       
       routingRef.current = true
+      setRoutingInProgress(true)
       const allRoutes = []
 
       console.log('Starting route calculation for', tourData.plannedItinerary.length, 'days')
@@ -275,16 +298,20 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
              })
               
               if (start && end) {
-                const routeCoords = await getRoute(start, end, 'driving-car')
-                const distance = calculateDistance(start, end, 'driving')
+                const routeResult = await getRoute(start, end, 'driving-car')
                 
-                console.log('Travel route calculated:', { distance, coordsLength: routeCoords.length })
+                console.log('Travel route calculated:', { 
+                  distance: routeResult.distance, 
+                  coordsLength: routeResult.coordinates.length,
+                  duration: routeResult.duration 
+                })
                 
                 dayRoutes.push({
-                  coordinates: routeCoords,
+                  coordinates: routeResult.coordinates,
                   color: dayColors[dayIndex % dayColors.length],
                   type: 'driving',
-                  distance: distance,
+                  distance: routeResult.distance,
+                  duration: routeResult.duration,
                   from: day.route.from.location,
                   to: day.route.to.location
                 })
@@ -314,14 +341,14 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
               // Route from hotel to first POI
               const firstPoi = day.pois[0]
               if (firstPoi.coordinates) {
-                const routeCoords = await getRoute(overnightStay.coordinates, firstPoi.coordinates, 'foot-walking')
-                const distance = calculateDistance(overnightStay.coordinates, firstPoi.coordinates, 'walking')
+                const routeResult = await getRoute(overnightStay.coordinates, firstPoi.coordinates, 'foot-walking')
                 
                 dayRoutes.push({
-                  coordinates: routeCoords,
+                  coordinates: routeResult.coordinates,
                   color: dayColors[dayIndex % dayColors.length],
                   type: 'walking',
-                  distance: distance,
+                  distance: routeResult.distance,
+                  duration: routeResult.duration,
                   from: overnightStay.location,
                   to: firstPoi.name
                 })
@@ -333,14 +360,14 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
                 const nextPoi = day.pois[i + 1]
                 
                 if (currentPoi.coordinates && nextPoi.coordinates) {
-                  const routeCoords = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
-                  const distance = calculateDistance(currentPoi.coordinates, nextPoi.coordinates, 'walking')
+                  const routeResult = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
                   
                   dayRoutes.push({
-                    coordinates: routeCoords,
+                    coordinates: routeResult.coordinates,
                     color: dayColors[dayIndex % dayColors.length],
                     type: 'walking',
-                    distance: distance,
+                    distance: routeResult.distance,
+                    duration: routeResult.duration,
                     from: currentPoi.name,
                     to: nextPoi.name
                   })
@@ -350,14 +377,14 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
               // Route from last POI back to hotel
               const lastPoi = day.pois[day.pois.length - 1]
               if (lastPoi.coordinates) {
-                const routeCoords = await getRoute(lastPoi.coordinates, overnightStay.coordinates, 'foot-walking')
-                const distance = calculateDistance(lastPoi.coordinates, overnightStay.coordinates, 'walking')
+                const routeResult = await getRoute(lastPoi.coordinates, overnightStay.coordinates, 'foot-walking')
                 
                 dayRoutes.push({
-                  coordinates: routeCoords,
+                  coordinates: routeResult.coordinates,
                   color: dayColors[dayIndex % dayColors.length],
                   type: 'walking',
-                  distance: distance,
+                  distance: routeResult.distance,
+                  duration: routeResult.duration,
                   from: lastPoi.name,
                   to: overnightStay.location
                 })
@@ -381,6 +408,7 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
         console.error('Route calculation error:', error)
       } finally {
         routingRef.current = false
+        setRoutingInProgress(false)
       }
     }
 
@@ -560,6 +588,8 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
       return
     }
     
+    setRoutingInProgress(true)
+    
          console.log('📍 Starting manual route calculation...')
      console.log('Itinerary:', tourData.plannedItinerary)
      console.log('🌍 Geocoding status:', {
@@ -588,16 +618,20 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
             console.log('Travel coordinates:', { start, end })
             
             if (start && end) {
-              const routeCoords = await getRoute(start, end, 'driving-car')
-              const distance = calculateDistance(start, end, 'driving')
+              const routeResult = await getRoute(start, end, 'driving-car')
               
-              console.log('Travel route calculated:', { distance, coordsLength: routeCoords.length })
+              console.log('Travel route calculated:', { 
+                distance: routeResult.distance, 
+                coordsLength: routeResult.coordinates.length,
+                duration: routeResult.duration 
+              })
               
               dayRoutes.push({
-                coordinates: routeCoords,
+                coordinates: routeResult.coordinates,
                 color: dayColors[dayIndex % dayColors.length],
                 type: 'driving',
-                distance: distance,
+                distance: routeResult.distance,
+                duration: routeResult.duration,
                 from: day.route.from.location,
                 to: day.route.to.location
               })
@@ -621,14 +655,14 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
             // Route from hotel to first POI
             const firstPoi = day.pois[0]
             if (firstPoi.coordinates) {
-              const routeCoords = await getRoute(overnightStay.coordinates, firstPoi.coordinates, 'foot-walking')
-              const distance = calculateDistance(overnightStay.coordinates, firstPoi.coordinates, 'walking')
+              const routeResult = await getRoute(overnightStay.coordinates, firstPoi.coordinates, 'foot-walking')
               
               dayRoutes.push({
-                coordinates: routeCoords,
+                coordinates: routeResult.coordinates,
                 color: dayColors[dayIndex % dayColors.length],
                 type: 'walking',
-                distance: distance,
+                distance: routeResult.distance,
+                duration: routeResult.duration,
                 from: overnightStay.location,
                 to: firstPoi.name
               })
@@ -640,14 +674,14 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
               const nextPoi = day.pois[i + 1]
               
               if (currentPoi.coordinates && nextPoi.coordinates) {
-                const routeCoords = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
-                const distance = calculateDistance(currentPoi.coordinates, nextPoi.coordinates, 'walking')
+                const routeResult = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
                 
                 dayRoutes.push({
-                  coordinates: routeCoords,
+                  coordinates: routeResult.coordinates,
                   color: dayColors[dayIndex % dayColors.length],
                   type: 'walking',
-                  distance: distance,
+                  distance: routeResult.distance,
+                  duration: routeResult.duration,
                   from: currentPoi.name,
                   to: nextPoi.name
                 })
@@ -657,14 +691,14 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
             // Route from last POI back to hotel
             const lastPoi = day.pois[day.pois.length - 1]
             if (lastPoi.coordinates) {
-              const routeCoords = await getRoute(lastPoi.coordinates, overnightStay.coordinates, 'foot-walking')
-              const distance = calculateDistance(lastPoi.coordinates, overnightStay.coordinates, 'walking')
+              const routeResult = await getRoute(lastPoi.coordinates, overnightStay.coordinates, 'foot-walking')
               
               dayRoutes.push({
-                coordinates: routeCoords,
+                coordinates: routeResult.coordinates,
                 color: dayColors[dayIndex % dayColors.length],
                 type: 'walking',
-                distance: distance,
+                distance: routeResult.distance,
+                duration: routeResult.duration,
                 from: lastPoi.name,
                 to: overnightStay.location
               })
@@ -689,6 +723,8 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
       
     } catch (error) {
       console.error('❌ Error in route calculation:', error)
+    } finally {
+      setRoutingInProgress(false)
     }
   }
 
@@ -849,17 +885,29 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
             )
           })()}
 
-                     {/* Route Lines */}
+                     {/* Route Lines with enhanced visibility */}
            {routesToShow.map(dayRoute => 
              dayRoute.routes.map((route, routeIndex) => (
-               <Polyline
-                 key={`${selectedDay}-${dayRoute.day}-${routeIndex}-${route.from}-${route.to}`}
-                 positions={route.coordinates}
-                 color={route.color}
-                 weight={route.type === 'driving' ? 4 : 3}
-                 opacity={route.type === 'driving' ? 0.8 : 0.6}
-                 dashArray={route.type === 'walking' ? '5, 10' : null}
-               />
+               <React.Fragment key={`route-fragment-${selectedDay}-${dayRoute.day}-${routeIndex}`}>
+                 {/* Background/outline for better visibility */}
+                 <Polyline
+                   key={`${selectedDay}-${dayRoute.day}-${routeIndex}-${route.from}-${route.to}-outline`}
+                   positions={route.coordinates}
+                   color="#FFFFFF"
+                   weight={route.type === 'driving' ? 8 : 6}
+                   opacity={0.9}
+                   dashArray={route.type === 'walking' ? '8, 12' : null}
+                 />
+                 {/* Main route line */}
+                 <Polyline
+                   key={`${selectedDay}-${dayRoute.day}-${routeIndex}-${route.from}-${route.to}-main`}
+                   positions={route.coordinates}
+                   color={route.color}
+                   weight={route.type === 'driving' ? 6 : 4}
+                   opacity={1.0}
+                   dashArray={route.type === 'walking' ? '6, 10' : null}
+                 />
+               </React.Fragment>
              ))
            )}
         </MapContainer>
@@ -903,11 +951,19 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
         </div>
       )}
 
+      {routingInProgress && (
+        <div className="routing-status">
+          <div className="routing-spinner"></div>
+          🛣️ Calculating routes...
+        </div>
+      )}
+
       {/* Attribution */}
       <div className="map-attribution">
         <small>
           Maps by <a href="https://www.openstreetmap.org/" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
-          {ROUTING_API_KEY && ' • Routing by OpenRouteService'}
+          {' • Routing by '}
+          <a href="http://project-osrm.org/" target="_blank" rel="noopener noreferrer">OSRM</a>
         </small>
       </div>
     </div>

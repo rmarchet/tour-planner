@@ -3,13 +3,15 @@
 - [ ] routes calculation 
   - [ ] should not be straight lines
   - [x] smarter algorithm
+  - [ ] loading spinner while routes are calculated
 
 - [ ] import JSON
 - [ ] export PDF
   - [x] better pagination
   - [x] map of the route for each day
-  - [ ] map larger and without zoom controls
-- [ ] tour map filtered by day shows only the locations of that date
+  - [x] map larger and without zoom controls
+  - [x] map exported to PDF has messed overlay
+- [x] tour map filtered by day shows only the locations of that date
 - [ ] sidebar
   - [ ] start date and end date input fields on the same row
   - [ ] possibility to add sub-POI for each POI

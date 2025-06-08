@@ -32,15 +32,23 @@ export const PDFDayMap = ({ day, dayIndex, tourData }) => {
       center: [51.505, -0.09], // Default center, will be updated
       zoom: 10,
       scrollWheelZoom: false,
-      dragging: true,
-      zoomControl: true,
+      dragging: false, // Disable dragging for PDF
+      zoomControl: false, // Remove zoom controls for PDF
       attributionControl: false, // Remove attribution for cleaner PDF
+      preferCanvas: true, // Use canvas renderer for better PDF capture
+      tapTolerance: 0, // Disable tap interactions
+      keyboard: false, // Disable keyboard interactions
     })
+
+    // Ensure map container is properly sized
+    setTimeout(() => {
+      map.invalidateSize()
+    }, 50)
 
     mapInstanceRef.current = map
 
     // Add tile layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: false
     }).addTo(map)
 
@@ -174,10 +182,31 @@ export const PDFDayMap = ({ day, dayIndex, tourData }) => {
       if (allPoints.length > 0) {
         const bounds = L.latLngBounds(allPoints)
         map.fitBounds(bounds, { padding: [10, 10] })
+        
+        // Force map to invalidate size and redraw after bounds are set
+        setTimeout(() => {
+          map.invalidateSize()
+        }, 100)
       }
     }
 
-    addDayContent()
+    // Wait for tiles to load before adding content
+    let tilesLoaded = false
+    const checkTilesLoaded = () => {
+      if (!tilesLoaded) {
+        tilesLoaded = true
+        // Add a delay to ensure tiles are fully rendered
+        setTimeout(() => {
+          addDayContent()
+        }, 500)
+      }
+    }
+
+    // Listen for tile load events
+    tileLayer.on('load', checkTilesLoaded)
+    
+    // Fallback in case tile load event doesn't fire
+    setTimeout(checkTilesLoaded, 1000)
 
     // Cleanup function
     return () => {

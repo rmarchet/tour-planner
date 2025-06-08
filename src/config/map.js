@@ -11,13 +11,12 @@ export const MAP_STYLE = 'https://api.maptiler.com/maps/streets-v2/style.json?ke
 // Geocoding service (Nominatim - free OpenStreetMap service)
 export const GEOCODING_URL = 'https://nominatim.openstreetmap.org/search'
 
-// Routing service (OpenRouteService - free with registration)
-// You can get a free API key at: https://openrouteservice.org/dev/
-export const ROUTING_API_KEY = 'demo' // Replace with your ORS key for production use
-export const ROUTING_URL = 'https://api.openrouteservice.org/v2/directions'
+// Routing service - Using OSRM (completely free, no API key needed)
+export const ROUTING_URL = 'https://router.project-osrm.org/route/v1'
+export const ROUTING_API_KEY = null // OSRM doesn't require API key
 
 // Alternative routing services:
-// OSRM (completely free, no key needed): http://router.project-osrm.org/route/v1/driving/
+// OpenRouteService (free with registration): https://api.openrouteservice.org/v2/directions
 // GraphHopper (free tier): https://graphhopper.com/api/1/route
 
 export const DEFAULT_CENTER = {
