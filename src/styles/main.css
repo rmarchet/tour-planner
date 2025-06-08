@@ -1387,7 +1387,7 @@ body {
 .pdf-day-card {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 20mm;
+  padding: 10mm;
   break-inside: avoid;
   page-break-inside: avoid;
   min-height: 250mm;

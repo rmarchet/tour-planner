@@ -110,9 +110,26 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData }) => {
       }
     }
     
-    breakdown.activities = day.pois.reduce((total, poi) => 
-      total + getPoiMinutes(poi.duration || 'half-day'), 0
-    )
+    // Only count main POIs for duration (secondary POIs are included in main POI time)
+    breakdown.activities = day.pois
+      .filter(poi => poi.type !== 'secondary')
+      .reduce((total, poi) => total + getPoiMinutes(poi.duration || 'half-day'), 0)
+    
+    // Calculate distinct locations for local travel
+    const getDistinctLocations = (pois) => {
+      const distinctLocations = new Set()
+      
+      pois.forEach(poi => {
+        if (poi.type === 'secondary') {
+          // Secondary POIs don't add to location count - they're at their main POI
+          return
+        }
+        // Add main POI location
+        distinctLocations.add(poi.id)
+      })
+      
+      return distinctLocations.size
+    }
     
     if (day.type === 'travel') {
       // Pure travel day
@@ -129,12 +146,18 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData }) => {
       // Mixed day: travel + activities
       const baseTravelTime = 180 // Base travel time for mixed days
       breakdown.travel = baseTravelTime
-      breakdown.localTravel = Math.max(0, day.estimatedTravelTime - breakdown.activities - baseTravelTime)
+      
+      // Local travel based on distinct locations only
+      const distinctLocations = getDistinctLocations(day.pois)
+      const baseLocalTravel = Math.max(0, (distinctLocations - 1) * 30) // 30 min between distinct locations
+      breakdown.localTravel = Math.max(0, Math.min(baseLocalTravel, day.estimatedTravelTime - breakdown.activities - baseTravelTime))
       breakdown.travelType = day.title?.toLowerCase().includes('return') ? 'return' : 'departure'
       
     } else {
-      // Tour day: just local travel between POIs
-      breakdown.localTravel = Math.max(60, day.estimatedTravelTime - breakdown.activities)
+      // Tour day: local travel between distinct locations only
+      const distinctLocations = getDistinctLocations(day.pois)
+      const baseLocalTravel = Math.max(30, (distinctLocations - 1) * 45) // 45 min between distinct locations
+      breakdown.localTravel = Math.max(0, Math.min(baseLocalTravel, day.estimatedTravelTime - breakdown.activities))
     }
     
     return breakdown
