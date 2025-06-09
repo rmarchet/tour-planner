@@ -13,6 +13,7 @@
   - [x] map larger and without zoom controls
   - [x] map exported to PDF has messed overlay
   - [x] differentiate secondary POI with recognizable style
+  - [ ] better cover for PDF
 - [x] tour map filtered by day shows only the locations of that date
 - [ ] Main map
   - [x] only update routes when manually click "Generate Tour Plan"
