@@ -20,6 +20,8 @@ export const App = () => {
   })
   
   const [isPDFPreviewOpen, setIsPDFPreviewOpen] = useState(false)
+  const [mapRoutes, setMapRoutes] = useState([])
+  const mapRef = React.useRef()
 
   // Save to localStorage whenever tourData changes
   useEffect(() => {
@@ -38,6 +40,13 @@ export const App = () => {
     setIsPDFPreviewOpen(false)
   }
 
+  const handleTourGenerated = () => {
+    // Trigger route calculation in the map component
+    if (mapRef.current?.calculateRoutes) {
+      mapRef.current.calculateRoutes()
+    }
+  }
+
   return (
     <div className="tour-planner">
       <Header tourData={tourData} openPDFPreview={openPDFPreview} updateTourData={updateTourData} />
@@ -47,6 +56,7 @@ export const App = () => {
           <TourInputPanel 
             tourData={tourData} 
             updateTourData={updateTourData} 
+            onTourGenerated={handleTourGenerated}
           />
           
           {tourData.plannedItinerary && (
@@ -59,8 +69,10 @@ export const App = () => {
         
         <div className="right-panel">
           <SimpleMapDisplay 
+            ref={mapRef}
             tourData={tourData}
             updateTourData={updateTourData}
+            onRoutesCalculated={setMapRoutes}
           />
         </div>
       </div>
@@ -69,6 +81,7 @@ export const App = () => {
         isOpen={isPDFPreviewOpen}
         onClose={closePDFPreview}
         tourData={tourData}
+        routes={mapRoutes}
       />
     </div>
   )

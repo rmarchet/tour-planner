@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { format, addDays, differenceInDays } from 'date-fns'
 import { POIDiscovery } from './POIDiscovery'
 
-export const TourInputPanel = ({ tourData, updateTourData }) => {
+export const TourInputPanel = ({ tourData, updateTourData, onTourGenerated }) => {
   const [newOvernightStay, setNewOvernightStay] = useState('')
   const [newPoi, setNewPoi] = useState({ name: '', category: '', duration: 'half-day', type: 'main', nearMainPOI: '' })
   const [homeLocationInput, setHomeLocationInput] = useState(tourData.homeLocation?.location || '')
@@ -79,6 +79,36 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
     updateTourData({ pois: updatedPois })
   }
 
+  const updatePoiPreferredDay = (id, preferredDay) => {
+    const updatedPois = tourData.pois.map(poi => 
+      poi.id === id ? { ...poi, preferredDay: preferredDay || null } : poi
+    )
+    updateTourData({ pois: updatedPois })
+  }
+
+  const getDayOptions = () => {
+    if (!tourData.startDate || !tourData.endDate) return []
+    
+    const start = new Date(tourData.startDate)
+    const end = new Date(tourData.endDate)
+    const diffTime = Math.abs(end - start)
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+    
+    const options = []
+    for (let i = 1; i <= diffDays; i++) {
+      const dayDate = new Date(start)
+      dayDate.setDate(dayDate.getDate() + i - 1)
+      options.push({
+        value: i.toString(),
+        label: `Day ${i} (${dayDate.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric' 
+        })})`
+      })
+    }
+    return options
+  }
+
   const clearData = () => {
     if (confirm('Clear all data and start fresh?')) {
       localStorage.removeItem('tourPlannerData')
@@ -129,7 +159,7 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
     if (canIncludeActivitiesOnFirstDay) tourDays += 1
     if (canIncludeActivitiesOnLastDay) tourDays += 1
     
-    // Optimized POI distribution with main/secondary POI hierarchy and geographic clustering
+    // Optimized POI distribution with main/secondary POI hierarchy, preferred days, and geographic clustering
     const distributePOIsByDuration = (pois, availableDays) => {
       if (pois.length === 0) return []
       
@@ -142,6 +172,13 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
           default: return 3.5 // Default to half-day
         }
       }
+      
+      // Step 0: Separate POIs with preferred days from those without
+      const poisWithPreferredDays = pois.filter(poi => poi.preferredDay && poi.type !== 'secondary')
+      const poisWithoutPreferredDays = pois.filter(poi => !poi.preferredDay && poi.type !== 'secondary')
+      const allSecondaryPOIs = pois.filter(poi => poi.type === 'secondary')
+      
+      console.log(`POIs with preferred days: ${poisWithPreferredDays.length}, without: ${poisWithoutPreferredDays.length}, secondary: ${allSecondaryPOIs.length}`)
       
       // Calculate distance between two coordinates (Haversine formula)
       const calculateDistance = (coord1, coord2) => {
@@ -156,39 +193,66 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
         return R * c
       }
       
-      // Step 1: Separate main and secondary POIs
-      const mainPOIs = pois.filter(poi => poi.type !== 'secondary')
-      const secondaryPOIs = pois.filter(poi => poi.type === 'secondary')
+      // Initialize daily POI arrays
+      const dailyPOIs = Array(availableDays).fill(null).map(() => [])
       
-      console.log(`Optimizing ${pois.length} POIs: ${mainPOIs.length} main, ${secondaryPOIs.length} secondary`)
-      
-      // Step 2: Create POI groups (main POI + its secondary POIs)
-      const createPOIGroups = () => {
-        const groups = []
-        
-        // Create groups for main POIs
-        mainPOIs.forEach(mainPOI => {
-          const group = {
-            mainPOI: mainPOI,
-            secondaryPOIs: [],
-            totalHours: getHours(mainPOI.duration || 'half-day')
+      // Step 1: Assign POIs with preferred days first
+      const assignPreferredDayPOIs = () => {
+        poisWithPreferredDays.forEach(poi => {
+          const dayIndex = parseInt(poi.preferredDay) - 1 // Convert 1-based to 0-based
+          if (dayIndex >= 0 && dayIndex < availableDays) {
+            dailyPOIs[dayIndex].push(poi)
+            
+            // Also add related secondary POIs
+            const relatedSecondaryPOIs = allSecondaryPOIs.filter(sPoi => sPoi.nearMainPOI === poi.name)
+            dailyPOIs[dayIndex].push(...relatedSecondaryPOIs)
+            
+            console.log(`Assigned ${poi.name} to Day ${poi.preferredDay} with ${relatedSecondaryPOIs.length} secondary POIs`)
           }
-          
-          // Find secondary POIs that belong to this main POI
-          secondaryPOIs.forEach(secondaryPOI => {
-            if (secondaryPOI.nearMainPOI === mainPOI.name) {
-              group.secondaryPOIs.push(secondaryPOI)
-              group.totalHours += getHours(secondaryPOI.duration || 'half-day')
-            }
-          })
-          
-          groups.push(group)
         })
-        
-        // Handle orphaned secondary POIs (secondary POIs without a matching main POI)
-        const orphanedSecondaryPOIs = secondaryPOIs.filter(secondaryPOI => 
-          !mainPOIs.some(mainPOI => mainPOI.name === secondaryPOI.nearMainPOI)
-        )
+      }
+      
+      assignPreferredDayPOIs()
+      
+             // Step 2: Create POI groups for remaining POIs (those without preferred days)
+       const createRemainingPOIGroups = () => {
+         const groups = []
+         
+         // Get secondary POIs that aren't already assigned to preferred day POIs
+         const assignedSecondaryPOIs = new Set()
+         poisWithPreferredDays.forEach(poi => {
+           allSecondaryPOIs.forEach(sPoi => {
+             if (sPoi.nearMainPOI === poi.name) {
+               assignedSecondaryPOIs.add(sPoi.id)
+             }
+           })
+         })
+         
+         const remainingSecondaryPOIs = allSecondaryPOIs.filter(sPoi => !assignedSecondaryPOIs.has(sPoi.id))
+         
+         // Create groups for remaining main POIs
+         poisWithoutPreferredDays.forEach(mainPOI => {
+           const group = {
+             mainPOI: mainPOI,
+             secondaryPOIs: [],
+             totalHours: getHours(mainPOI.duration || 'half-day')
+           }
+           
+           // Find secondary POIs that belong to this main POI and aren't already assigned
+           remainingSecondaryPOIs.forEach(secondaryPOI => {
+             if (secondaryPOI.nearMainPOI === mainPOI.name) {
+               group.secondaryPOIs.push(secondaryPOI)
+               group.totalHours += getHours(secondaryPOI.duration || 'half-day')
+             }
+           })
+           
+           groups.push(group)
+         })
+         
+         // Handle orphaned secondary POIs (secondary POIs without a matching main POI)
+         const orphanedSecondaryPOIs = remainingSecondaryPOIs.filter(secondaryPOI => 
+           !poisWithoutPreferredDays.some(mainPOI => mainPOI.name === secondaryPOI.nearMainPOI)
+         )
         
         if (orphanedSecondaryPOIs.length > 0) {
           console.warn(`Found ${orphanedSecondaryPOIs.length} orphaned secondary POIs`)
@@ -202,124 +266,86 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
           })
         }
         
-        return groups
-      }
+                 return groups
+       }
+       
+       const remainingPoiGroups = createRemainingPOIGroups()
+       console.log('Created remaining POI groups:', remainingPoiGroups.map(g => 
+         `${g.mainPOI.name} + ${g.secondaryPOIs.length} secondary (${g.totalHours.toFixed(1)}h)`
+       ))
+       
+       // Step 3: Distribute remaining POI groups to available days
+       const hoursPerDay = 8
+       
+       // Calculate available capacity for each day (accounting for preferred day assignments)
+       const getDayCapacity = (dayIndex) => {
+         const currentPOIs = dailyPOIs[dayIndex]
+         const currentHours = currentPOIs.reduce((sum, poi) => sum + getHours(poi.duration || 'half-day'), 0)
+         return hoursPerDay - currentHours
+       }
+       
+       // Separate full-day groups and others from remaining groups
+       const fullDayGroups = remainingPoiGroups.filter(group => group.totalHours >= 6)
+       const otherGroups = remainingPoiGroups.filter(group => group.totalHours < 6)
+       
+       console.log(`${fullDayGroups.length} remaining full-day groups, ${otherGroups.length} other groups`)
+       
+       // Step 4: Assign full-day groups to days with sufficient capacity
+       fullDayGroups.forEach(group => {
+         let assigned = false
+         for (let dayIndex = 0; dayIndex < availableDays; dayIndex++) {
+           if (getDayCapacity(dayIndex) >= group.totalHours) {
+             dailyPOIs[dayIndex].push(group.mainPOI, ...group.secondaryPOIs)
+             assigned = true
+             console.log(`Assigned full-day group ${group.mainPOI.name} to Day ${dayIndex + 1}`)
+             break
+           }
+         }
+         if (!assigned) {
+           // Find day with most capacity
+           let bestDayIndex = 0
+           let maxCapacity = getDayCapacity(0)
+           for (let dayIndex = 1; dayIndex < availableDays; dayIndex++) {
+             const capacity = getDayCapacity(dayIndex)
+             if (capacity > maxCapacity) {
+               maxCapacity = capacity
+               bestDayIndex = dayIndex
+             }
+           }
+           dailyPOIs[bestDayIndex].push(group.mainPOI, ...group.secondaryPOIs)
+           console.log(`Force-assigned full-day group ${group.mainPOI.name} to Day ${bestDayIndex + 1}`)
+         }
+       })
       
-      const poiGroups = createPOIGroups()
-      console.log('Created POI groups:', poiGroups.map(g => 
-        `${g.mainPOI.name} + ${g.secondaryPOIs.length} secondary (${g.totalHours.toFixed(1)}h)`
-      ))
-      
-      // Step 3: Separate full-day groups and others
-      const hoursPerDay = 8
-      const fullDayGroups = poiGroups.filter(group => group.totalHours >= 6) // Groups that need their own day
-      const otherGroups = poiGroups.filter(group => group.totalHours < 6)
-      
-      console.log(`${fullDayGroups.length} full-day groups, ${otherGroups.length} other groups`)
-      
-      // Step 4: Create daily schedules
-      const dailyPOIs = []
-      
-      // Add full-day groups first (each gets its own day)
-      fullDayGroups.forEach(group => {
-        const dayPOIs = [group.mainPOI, ...group.secondaryPOIs]
-        dailyPOIs.push(dayPOIs)
-      })
-      
-      // Step 5: Cluster other groups by geography
-      const clusterGroupsByGeography = (groupsToCluster) => {
-        if (groupsToCluster.length === 0) return []
-        if (groupsToCluster.length === 1) return [groupsToCluster]
-        
-        const clusters = []
-        const used = new Set()
-        
-        for (const group of groupsToCluster) {
-          if (used.has(group.mainPOI.id)) continue
-          
-          const cluster = [group]
-          used.add(group.mainPOI.id)
-          
-          // Find nearby groups (within reasonable distance)
-          for (const otherGroup of groupsToCluster) {
-            if (used.has(otherGroup.mainPOI.id)) continue
-            
-            const distance = calculateDistance(group.mainPOI.coordinates, otherGroup.mainPOI.coordinates)
-            if (distance < 20) { // Within 20km - adjust as needed
-              cluster.push(otherGroup)
-              used.add(otherGroup.mainPOI.id)
-            }
-          }
-          
-          clusters.push(cluster)
-        }
-        
-        return clusters
-      }
-      
-      const groupClusters = clusterGroupsByGeography(otherGroups)
-      console.log(`Created ${groupClusters.length} group clusters`)
-      
-      // Step 6: Distribute group clusters across remaining days
-      let remainingDays = availableDays - fullDayGroups.length
-      
-      if (remainingDays <= 0) {
-        console.warn('Not enough days for all POI groups - some groups may be truncated')
-        return dailyPOIs.slice(0, availableDays)
-      }
-      
-      // Sort clusters by total duration
-      groupClusters.sort((a, b) => {
-        const aHours = a.reduce((sum, group) => sum + group.totalHours, 0)
-        const bHours = b.reduce((sum, group) => sum + group.totalHours, 0)
-        return bHours - aHours // Prioritize clusters with more content
-      })
-      
-      // Distribute group clusters across remaining days
-      for (const cluster of groupClusters) {
-        const clusterHours = cluster.reduce((sum, group) => sum + group.totalHours, 0)
-        
-        // Try to find a day with compatible remaining capacity
-        let assignedToExistingDay = false
-        for (let i = fullDayGroups.length; i < dailyPOIs.length; i++) {
-          const dayHours = dailyPOIs[i].reduce((sum, poi) => sum + getHours(poi.duration || 'half-day'), 0)
-          if (dayHours + clusterHours <= hoursPerDay) {
-            // Add all POIs from the cluster groups to this day
-            cluster.forEach(group => {
-              dailyPOIs[i].push(group.mainPOI, ...group.secondaryPOIs)
-            })
-            assignedToExistingDay = true
-            break
-          }
-        }
-        
-        // If no existing day can fit it, create a new day
-        if (!assignedToExistingDay) {
-          if (dailyPOIs.length < availableDays) {
-            const newDayPOIs = []
-            cluster.forEach(group => {
-              newDayPOIs.push(group.mainPOI, ...group.secondaryPOIs)
-            })
-            dailyPOIs.push(newDayPOIs)
-          } else {
-            // No more days available, add to the least full day
-            let leastFullIndex = fullDayGroups.length
-            let minHours = Infinity
-            for (let i = fullDayGroups.length; i < dailyPOIs.length; i++) {
-              const dayHours = dailyPOIs[i].reduce((sum, poi) => sum + getHours(poi.duration || 'half-day'), 0)
-              if (dayHours < minHours) {
-                minHours = dayHours
-                leastFullIndex = i
-              }
-            }
-            if (leastFullIndex < dailyPOIs.length) {
-              cluster.forEach(group => {
-                dailyPOIs[leastFullIndex].push(group.mainPOI, ...group.secondaryPOIs)
-              })
-            }
-          }
-        }
-      }
+             // Step 5: Distribute remaining smaller groups to days with capacity
+       otherGroups.forEach(group => {
+         let assigned = false
+         
+         // Try to find a day with enough capacity
+         for (let dayIndex = 0; dayIndex < availableDays; dayIndex++) {
+           if (getDayCapacity(dayIndex) >= group.totalHours) {
+             dailyPOIs[dayIndex].push(group.mainPOI, ...group.secondaryPOIs)
+             assigned = true
+             console.log(`Assigned group ${group.mainPOI.name} to Day ${dayIndex + 1}`)
+             break
+           }
+         }
+         
+         if (!assigned) {
+           // Find day with most capacity
+           let bestDayIndex = 0
+           let maxCapacity = getDayCapacity(0)
+           for (let dayIndex = 1; dayIndex < availableDays; dayIndex++) {
+             const capacity = getDayCapacity(dayIndex)
+             if (capacity > maxCapacity) {
+               maxCapacity = capacity
+               bestDayIndex = dayIndex
+             }
+           }
+           dailyPOIs[bestDayIndex].push(group.mainPOI, ...group.secondaryPOIs)
+           console.log(`Force-assigned group ${group.mainPOI.name} to Day ${bestDayIndex + 1}`)
+         }
+       })
       
       // Step 7: Optimize POI order within each day (keeping main POI + secondaries together)
       dailyPOIs.forEach(dayPOIs => {
@@ -488,6 +514,14 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
 
     console.log('Generated itinerary:', itinerary)
     updateTourData({ plannedItinerary: itinerary })
+    
+    // Trigger route calculation after itinerary is generated
+    if (onTourGenerated) {
+      // Use setTimeout to ensure the state update is completed first
+      setTimeout(() => {
+        onTourGenerated()
+      }, 100)
+    }
   }
 
   return (
@@ -676,6 +710,21 @@ export const TourInputPanel = ({ tourData, updateTourData }) => {
                     <option value="half-day">🕐 Half Day (3-4h)</option>
                     <option value="full-day">🕘 Full Day (6-8h)</option>
                   </select>
+                  {poi.type !== 'secondary' && tourData.startDate && tourData.endDate && (
+                    <select
+                      value={poi.preferredDay || ''}
+                      onChange={(e) => updatePoiPreferredDay(poi.id, e.target.value)}
+                      className="poi-day-select"
+                      title="Choose specific day to visit"
+                    >
+                      <option value="">Auto assign day</option>
+                      {getDayOptions().map(dayOption => (
+                        <option key={dayOption.value} value={dayOption.value}>
+                          {dayOption.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <button onClick={() => removePoi(poi.id)} className="remove-btn" title="Remove POI">×</button>
                 </div>
               </div>

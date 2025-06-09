@@ -48,13 +48,18 @@ const MapController = ({ bounds }) => {
   return null
 }
 
-export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
+export const SimpleMapDisplay = React.forwardRef(({ tourData, updateTourData, onRoutesCalculated }, ref) => {
   const [geocodingInProgress, setGeocodingInProgress] = useState(false)
   const [routingInProgress, setRoutingInProgress] = useState(false)
   const [routes, setRoutes] = useState([])
   const [selectedDay, setSelectedDay] = useState('all')
   const isGeocodingRef = useRef(false)
   const routingRef = useRef(false)
+
+  // Expose calculateRoutes function to parent component
+  React.useImperativeHandle(ref, () => ({
+    calculateRoutes
+  }))
 
   // Geocode a single location using Nominatim with fallbacks
   const geocodeLocation = async (query) => {
@@ -254,94 +259,110 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
     geocodeLocations()
   }, [tourData.overnightStays, tourData.pois, tourData.homeLocation, updateTourData])
 
-  // Calculate routes when itinerary changes
-  useEffect(() => {
+  // Function to calculate routes manually (called from "Generate tour plan" button)
+  const calculateRoutes = async () => {
     if (!tourData.plannedItinerary) return
     
-    console.log('useEffect triggered for route calculation')
+    if (routingRef.current) {
+      console.log('Route calculation already in progress, skipping')
+      return
+    }
+    
+    routingRef.current = true
+    setRoutingInProgress(true)
+    const allRoutes = []
 
-    const calculateRoutes = async () => {
-      if (routingRef.current) {
-        console.log('Route calculation already in progress, skipping')
-        return
-      }
-      
-      routingRef.current = true
-      setRoutingInProgress(true)
-      const allRoutes = []
+    console.log('Starting route calculation for', tourData.plannedItinerary.length, 'days')
 
-      console.log('Starting route calculation for', tourData.plannedItinerary.length, 'days')
+    try {
+      for (let dayIndex = 0; dayIndex < tourData.plannedItinerary.length; dayIndex++) {
+        const day = tourData.plannedItinerary[dayIndex]
+        const dayRoutes = []
+        
+        console.log(`Calculating routes for Day ${dayIndex + 1}:`, day)
 
-      try {
-        for (let dayIndex = 0; dayIndex < tourData.plannedItinerary.length; dayIndex++) {
-          const day = tourData.plannedItinerary[dayIndex]
-          const dayRoutes = []
-          
-          console.log(`Calculating routes for Day ${dayIndex + 1}:`, day)
-
-          if (day.type === 'travel' || day.type === 'mixed') {
-            // Travel day - car route between cities
-            console.log('Travel day route:', day.route)
-            if (day.route) {
-              const start = day.route.from.coordinates
-              const end = day.route.to.coordinates
-              
-              console.log('Travel coordinates DEBUG:', { 
-               start, 
-               end,
-               fromLocation: day.route.from.location,
-               toLocation: day.route.to.location,
-               fromCoords: day.route.from.coordinates,
-               toCoords: day.route.to.coordinates,
-               fromCoordsType: typeof day.route.from.coordinates,
-               toCoordsType: typeof day.route.to.coordinates
-             })
-              
-              if (start && end) {
-                const routeResult = await getRoute(start, end, 'driving-car')
-                
-                console.log('Travel route calculated:', { 
-                  distance: routeResult.distance, 
-                  coordsLength: routeResult.coordinates.length,
-                  duration: routeResult.duration 
-                })
-                
-                dayRoutes.push({
-                  coordinates: routeResult.coordinates,
-                  color: dayColors[dayIndex % dayColors.length],
-                  type: 'driving',
-                  distance: routeResult.distance,
-                  duration: routeResult.duration,
-                  from: day.route.from.location,
-                  to: day.route.to.location
-                })
-              } else {
-                console.log('Missing coordinates for travel day')
-              }
-            } else {
-              console.log('No route object for travel day')
-            }
-          } 
-          
-          if (day.type === 'tour' || day.type === 'mixed') {
-            // Tour day - walking routes within city
-            const overnightStay = tourData.overnightStays.find(stay => stay.id === day.overnightStayId)
+        if (day.type === 'travel' || day.type === 'mixed') {
+          // Travel day - car route between cities
+          console.log('Travel day route:', day.route)
+          if (day.route) {
+            const start = day.route.from.coordinates
+            const end = day.route.to.coordinates
             
-            console.log('Tour day DEBUG:', { 
-             overnightStayId: day.overnightStayId, 
-             overnightStay, 
-             poisCount: day.pois.length,
-             overnightStayCoords: overnightStay?.coordinates,
-             overnightStayLocation: overnightStay?.location,
-             poisWithCoords: day.pois.map(poi => ({ name: poi.name, coords: poi.coordinates, hasCoords: !!poi.coordinates }))
+            console.log('Travel coordinates DEBUG:', { 
+             start, 
+             end,
+             fromLocation: day.route.from.location,
+             toLocation: day.route.to.location,
+             fromCoords: day.route.from.coordinates,
+             toCoords: day.route.to.coordinates,
+             fromCoordsType: typeof day.route.from.coordinates,
+             toCoordsType: typeof day.route.to.coordinates
            })
             
-            if (overnightStay?.coordinates && day.pois.length > 0) {
-              console.log('Tour day has overnight stay and POIs, calculating routes...')
-              // Route from hotel to first POI
-              const firstPoi = day.pois[0]
-              if (firstPoi.coordinates) {
-                const routeResult = await getRoute(overnightStay.coordinates, firstPoi.coordinates, 'foot-walking')
+            if (start && end) {
+              const routeResult = await getRoute(start, end, 'driving-car')
+              
+              console.log('Travel route calculated:', { 
+                distance: routeResult.distance, 
+                coordsLength: routeResult.coordinates.length,
+                duration: routeResult.duration 
+              })
+              
+              dayRoutes.push({
+                coordinates: routeResult.coordinates,
+                color: dayColors[dayIndex % dayColors.length],
+                type: 'driving',
+                distance: routeResult.distance,
+                duration: routeResult.duration,
+                from: day.route.from.location,
+                to: day.route.to.location
+              })
+            } else {
+              console.log('Missing coordinates for travel day')
+            }
+          } else {
+            console.log('No route object for travel day')
+          }
+        } 
+        
+        if (day.type === 'tour' || day.type === 'mixed') {
+          // Tour day - walking routes within city
+          const overnightStay = tourData.overnightStays.find(stay => stay.id === day.overnightStayId)
+          
+          console.log('Tour day DEBUG:', { 
+           overnightStayId: day.overnightStayId, 
+           overnightStay, 
+           poisCount: day.pois.length,
+           overnightStayCoords: overnightStay?.coordinates,
+           overnightStayLocation: overnightStay?.location,
+           poisWithCoords: day.pois.map(poi => ({ name: poi.name, coords: poi.coordinates, hasCoords: !!poi.coordinates }))
+         })
+          
+          if (overnightStay?.coordinates && day.pois.length > 0) {
+            console.log('Tour day has overnight stay and POIs, calculating routes...')
+            // Route from hotel to first POI
+            const firstPoi = day.pois[0]
+            if (firstPoi.coordinates) {
+              const routeResult = await getRoute(overnightStay.coordinates, firstPoi.coordinates, 'foot-walking')
+              
+              dayRoutes.push({
+                coordinates: routeResult.coordinates,
+                color: dayColors[dayIndex % dayColors.length],
+                type: 'walking',
+                distance: routeResult.distance,
+                duration: routeResult.duration,
+                from: overnightStay.location,
+                to: firstPoi.name
+              })
+            }
+
+            // Routes between POIs
+            for (let i = 0; i < day.pois.length - 1; i++) {
+              const currentPoi = day.pois[i]
+              const nextPoi = day.pois[i + 1]
+              
+              if (currentPoi.coordinates && nextPoi.coordinates) {
+                const routeResult = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
                 
                 dayRoutes.push({
                   coordinates: routeResult.coordinates,
@@ -349,71 +370,54 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
                   type: 'walking',
                   distance: routeResult.distance,
                   duration: routeResult.duration,
-                  from: overnightStay.location,
-                  to: firstPoi.name
-                })
-              }
-
-              // Routes between POIs
-              for (let i = 0; i < day.pois.length - 1; i++) {
-                const currentPoi = day.pois[i]
-                const nextPoi = day.pois[i + 1]
-                
-                if (currentPoi.coordinates && nextPoi.coordinates) {
-                  const routeResult = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
-                  
-                  dayRoutes.push({
-                    coordinates: routeResult.coordinates,
-                    color: dayColors[dayIndex % dayColors.length],
-                    type: 'walking',
-                    distance: routeResult.distance,
-                    duration: routeResult.duration,
-                    from: currentPoi.name,
-                    to: nextPoi.name
-                  })
-                }
-              }
-
-              // Route from last POI back to hotel
-              const lastPoi = day.pois[day.pois.length - 1]
-              if (lastPoi.coordinates) {
-                const routeResult = await getRoute(lastPoi.coordinates, overnightStay.coordinates, 'foot-walking')
-                
-                dayRoutes.push({
-                  coordinates: routeResult.coordinates,
-                  color: dayColors[dayIndex % dayColors.length],
-                  type: 'walking',
-                  distance: routeResult.distance,
-                  duration: routeResult.duration,
-                  from: lastPoi.name,
-                  to: overnightStay.location
+                  from: currentPoi.name,
+                  to: nextPoi.name
                 })
               }
             }
-          }
 
-          console.log(`Day ${dayIndex + 1} routes:`, dayRoutes)
-          
-          allRoutes.push({
-            day: dayIndex,
-            date: day.date,
-            type: day.type,
-            routes: dayRoutes
-          })
+            // Route from last POI back to hotel
+            const lastPoi = day.pois[day.pois.length - 1]
+            if (lastPoi.coordinates) {
+              const routeResult = await getRoute(lastPoi.coordinates, overnightStay.coordinates, 'foot-walking')
+              
+              dayRoutes.push({
+                coordinates: routeResult.coordinates,
+                color: dayColors[dayIndex % dayColors.length],
+                type: 'walking',
+                distance: routeResult.distance,
+                duration: routeResult.duration,
+                from: lastPoi.name,
+                to: overnightStay.location
+              })
+            }
+          }
         }
 
-        console.log('Final routes array:', allRoutes)
-        setRoutes(allRoutes)
-      } catch (error) {
-        console.error('Route calculation error:', error)
-      } finally {
-        routingRef.current = false
-        setRoutingInProgress(false)
+        console.log(`Day ${dayIndex + 1} routes:`, dayRoutes)
+        
+        allRoutes.push({
+          day: dayIndex,
+          date: day.date,
+          type: day.type,
+          routes: dayRoutes
+        })
       }
-    }
 
-    calculateRoutes()
-  }, [tourData.plannedItinerary, tourData.overnightStays, tourData.pois, tourData.homeLocation])
+      console.log('Final routes array:', allRoutes)
+      setRoutes(allRoutes)
+      
+      // Notify parent component about route calculation completion
+      if (onRoutesCalculated) {
+        onRoutesCalculated(allRoutes)
+      }
+    } catch (error) {
+      console.error('Route calculation error:', error)
+    } finally {
+      routingRef.current = false
+      setRoutingInProgress(false)
+    }
+  }
 
   // Get locations relevant to a specific day
   const getLocationsForDay = (dayIndex) => {
@@ -721,6 +725,11 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
       console.log('✅ Generated route structure:', allRoutes)
       setRoutes(allRoutes)
       
+      // Notify parent component about route calculation completion
+      if (onRoutesCalculated) {
+        onRoutesCalculated(allRoutes)
+      }
+      
     } catch (error) {
       console.error('❌ Error in route calculation:', error)
     } finally {
@@ -968,4 +977,4 @@ export const SimpleMapDisplay = ({ tourData, updateTourData }) => {
       </div>
     </div>
   )
-} 
+})

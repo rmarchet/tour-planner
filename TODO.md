@@ -16,9 +16,9 @@
   - [ ] only update routes when manually click "Generate Tour Plan"
   - [ ] view names of main POIs directly on the map
 - [ ] sidebar
-  - [ ] start date and end date input fields on the same row
+  - [x] start date and end date input fields on the same row
   - [x] possibility to add sub-POI for each POI
-  - [ ] possibility to drag and sort POI manually
+  - [x] possibility manually assign a POI to a particular day
 
 ## Routes
 

@@ -4,7 +4,7 @@ import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { PDFDayMap } from './PDFDayMap'
 
-export const PDFPreviewModal = ({ isOpen, onClose, tourData }) => {
+export const PDFPreviewModal = ({ isOpen, onClose, tourData, routes = [] }) => {
   if (!isOpen || !tourData.plannedItinerary) return null
 
   const exportToPDF = async () => {
@@ -353,6 +353,7 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData }) => {
                       day={day} 
                       dayIndex={index} 
                       tourData={tourData}
+                      routes={routes}
                     />
                   </div>
                 </div>

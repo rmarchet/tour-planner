@@ -202,7 +202,7 @@ export const DailyItinerary = ({ itinerary, startDate }) => {
                       <h4>Places to Visit:</h4>
                       <div className="pois-list">
                         {day.pois.map(poi => (
-                          <div key={poi.id} className="poi-item">
+                          <div key={poi.id} className={`poi-item ${poi.type === 'secondary' ? 'secondary-poi' : 'main-poi'}`}>
                             <span className="poi-icon">📍</span>
                             <div className="poi-details">
                               <span className="poi-name">{poi.name}</span>

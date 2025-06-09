@@ -21,49 +21,10 @@ const createCustomIcon = (emoji, size = 24) => {
   })
 }
 
-export const PDFDayMap = ({ day, dayIndex, tourData }) => {
+export const PDFDayMap = ({ day, dayIndex, tourData, routes = [] }) => {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
-  const [routingInProgress, setRoutingInProgress] = useState(false)
-
-  // Get route between two points using OSRM (same as main map)
-  const getRoute = async (start, end, profile = 'driving-car') => {
-    // Direct line route as fallback
-    const directRoute = [[start.latitude, start.longitude], [end.latitude, end.longitude]]
-    
-    try {
-      // Convert profile to OSRM format
-      const osrmProfile = profile === 'foot-walking' ? 'walking' : 'driving'
-      
-      // OSRM API format: {service}/{version}/{profile}/{coordinates}?options
-      const coordinates = `${start.longitude},${start.latitude};${end.longitude},${end.latitude}`
-      const osrmUrl = `${ROUTING_URL}/${osrmProfile}/${coordinates}?overview=full&geometries=geojson`
-      
-      const response = await fetch(osrmUrl)
-      
-      if (response.ok) {
-        const data = await response.json()
-        
-        if (data.routes && data.routes[0] && data.routes[0].geometry && data.routes[0].geometry.coordinates) {
-          const routeCoordinates = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]])
-          
-          return {
-            coordinates: routeCoordinates,
-            distance: data.routes[0].distance / 1000, // Convert meters to km
-            duration: data.routes[0].duration / 60 // Convert seconds to minutes
-          }
-        }
-      }
-    } catch (error) {
-      console.warn(`OSRM routing failed for ${profile} in PDF map, using direct line:`, error.message)
-    }
-    
-    return {
-      coordinates: directRoute,
-      distance: null,
-      duration: null
-    }
-  }
+  // No longer need routing progress state since we use existing routes
 
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return
@@ -94,9 +55,8 @@ export const PDFDayMap = ({ day, dayIndex, tourData }) => {
     }).addTo(map)
 
     // Add markers and routes for this specific day
-    const addDayContent = async () => {
+    const addDayContent = () => {
       const markers = []
-      const routes = []
 
       // Add home location if this is first or last day
       if (tourData.homeLocation?.coordinates && (dayIndex === 0 || dayIndex === tourData.plannedItinerary.length - 1)) {
@@ -127,211 +87,112 @@ export const PDFDayMap = ({ day, dayIndex, tourData }) => {
         }
       })
 
-             // Draw real road-based routes using OSRM
-       const drawRealRoutes = async () => {
-         setRoutingInProgress(true)
-         if (day.type === 'travel') {
-           // Pure travel day: start → end
-           const startCoords = day.route?.from?.coordinates
-           const endCoords = day.route?.to?.coordinates || day.overnightStay?.coordinates
-           
-           if (startCoords && endCoords) {
-             const routeResult = await getRoute(startCoords, endCoords, 'driving-car')
-             
-             // Add white outline
-             L.polyline(routeResult.coordinates, {
-               color: '#FFFFFF',
-               weight: 8,
-               opacity: 0.9
-             }).addTo(map)
-             
-             // Add main route line
-             L.polyline(routeResult.coordinates, {
-               color: '#3498DB',
-               weight: 6,
-               opacity: 1.0
-             }).addTo(map)
-             
-             routes.push(...routeResult.coordinates)
-           }
-         } else if (day.type === 'mixed') {
-           // Mixed day: start → POIs → overnight stay
-           const startCoords = day.route?.from?.coordinates
-           const endCoords = day.overnightStay?.coordinates
-           
-           if (startCoords) {
-             let currentCoords = startCoords
-             let segmentIndex = 0
-             
-             // Travel to first POI
-             if (day.pois.length > 0 && day.pois[0].coordinates) {
-               const routeResult = await getRoute(currentCoords, day.pois[0].coordinates, 'driving-car')
-               
-               // White outline
-               L.polyline(routeResult.coordinates, {
-                 color: '#FFFFFF',
-                 weight: 8,
-                 opacity: 0.9
-               }).addTo(map)
-               
-               // Blue travel line
-               L.polyline(routeResult.coordinates, {
-                 color: '#3498DB',
-                 weight: 6,
-                 opacity: 1.0
-               }).addTo(map)
-               
-               routes.push(...routeResult.coordinates)
-               currentCoords = day.pois[0].coordinates
-             }
-             
-             // Routes between POIs (walking)
-             for (let i = 0; i < day.pois.length - 1; i++) {
-               const currentPoi = day.pois[i]
-               const nextPoi = day.pois[i + 1]
-               
-               if (currentPoi.coordinates && nextPoi.coordinates) {
-                 const routeResult = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
-                 
-                 // White outline
-                 L.polyline(routeResult.coordinates, {
-                   color: '#FFFFFF',
-                   weight: 6,
-                   opacity: 0.9,
-                   dashArray: '8, 12'
-                 }).addTo(map)
-                 
-                 // Green walking line
-                 L.polyline(routeResult.coordinates, {
-                   color: '#2ECC71',
-                   weight: 4,
-                   opacity: 1.0,
-                   dashArray: '6, 10'
-                 }).addTo(map)
-                 
-                 routes.push(...routeResult.coordinates)
-               }
-             }
-             
-             // Return to overnight stay
-             if (day.pois.length > 0 && endCoords) {
-               const lastPoi = day.pois[day.pois.length - 1]
-               if (lastPoi.coordinates) {
-                 const routeResult = await getRoute(lastPoi.coordinates, endCoords, 'foot-walking')
-                 
-                 // White outline
-                 L.polyline(routeResult.coordinates, {
-                   color: '#FFFFFF',
-                   weight: 6,
-                   opacity: 0.9,
-                   dashArray: '8, 12'
-                 }).addTo(map)
-                 
-                 // Green walking line
-                 L.polyline(routeResult.coordinates, {
-                   color: '#2ECC71',
-                   weight: 4,
-                   opacity: 1.0,
-                   dashArray: '6, 10'
-                 }).addTo(map)
-                 
-                 routes.push(...routeResult.coordinates)
-               }
-             }
-           }
-         } else {
-           // Tour day: overnight stay → POIs → overnight stay
-           const baseCoords = day.overnightStay?.coordinates
-           
-           if (baseCoords && day.pois.length > 0) {
-             // Route from hotel to first POI
-             const firstPoi = day.pois[0]
-             if (firstPoi.coordinates) {
-               const routeResult = await getRoute(baseCoords, firstPoi.coordinates, 'foot-walking')
-               
-               // White outline
-               L.polyline(routeResult.coordinates, {
-                 color: '#FFFFFF',
-                 weight: 6,
-                 opacity: 0.9,
-                 dashArray: '8, 12'
-               }).addTo(map)
-               
-               // Green walking line
-               L.polyline(routeResult.coordinates, {
-                 color: '#2ECC71',
-                 weight: 4,
-                 opacity: 1.0,
-                 dashArray: '6, 10'
-               }).addTo(map)
-               
-               routes.push(...routeResult.coordinates)
-             }
-             
-             // Routes between POIs
-             for (let i = 0; i < day.pois.length - 1; i++) {
-               const currentPoi = day.pois[i]
-               const nextPoi = day.pois[i + 1]
-               
-               if (currentPoi.coordinates && nextPoi.coordinates) {
-                 const routeResult = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
-                 
-                 // White outline
-                 L.polyline(routeResult.coordinates, {
-                   color: '#FFFFFF',
-                   weight: 6,
-                   opacity: 0.9,
-                   dashArray: '8, 12'
-                 }).addTo(map)
-                 
-                 // Green walking line
-                 L.polyline(routeResult.coordinates, {
-                   color: '#2ECC71',
-                   weight: 4,
-                   opacity: 1.0,
-                   dashArray: '6, 10'
-                 }).addTo(map)
-                 
-                 routes.push(...routeResult.coordinates)
-               }
-             }
-             
-             // Route from last POI back to hotel
-             const lastPoi = day.pois[day.pois.length - 1]
-             if (lastPoi.coordinates) {
-               const routeResult = await getRoute(lastPoi.coordinates, baseCoords, 'foot-walking')
-               
-               // White outline
-               L.polyline(routeResult.coordinates, {
-                 color: '#FFFFFF',
-                 weight: 6,
-                 opacity: 0.9,
-                 dashArray: '8, 12'
-               }).addTo(map)
-               
-               // Green walking line
-               L.polyline(routeResult.coordinates, {
-                 color: '#2ECC71',
-                 weight: 4,
-                 opacity: 1.0,
-                 dashArray: '6, 10'
-               }).addTo(map)
-               
-               routes.push(...routeResult.coordinates)
-             }
-           }
-         }
-               }
+                   // Use existing route data instead of recalculating
+      const drawExistingRoutes = () => {
+        console.log('PDFDayMap - Drawing routes for day', dayIndex)
+        console.log('PDFDayMap - Available routes:', routes)
         
-        // Execute the route drawing
-        try {
-          await drawRealRoutes()
-        } finally {
-          setRoutingInProgress(false)
+        const dayRoutes = routes.find(r => r.day === dayIndex)
+        console.log('PDFDayMap - Found day routes:', dayRoutes)
+        
+        const routeCoordinates = []
+        
+        if (dayRoutes && dayRoutes.routes) {
+          console.log('PDFDayMap - Processing', dayRoutes.routes.length, 'routes')
+          dayRoutes.routes.forEach(route => {
+            // Add white outline for better visibility
+            L.polyline(route.coordinates, {
+              color: '#FFFFFF',
+              weight: route.type === 'driving' ? 8 : 6,
+              opacity: 0.9,
+              dashArray: route.type === 'walking' ? '8, 12' : null
+            }).addTo(map)
+            
+            // Add main route line with proper color and style
+            L.polyline(route.coordinates, {
+              color: route.type === 'driving' ? '#3498DB' : '#2ECC71',
+              weight: route.type === 'driving' ? 6 : 4,
+              opacity: 1.0,
+              dashArray: route.type === 'walking' ? '6, 10' : null
+            }).addTo(map)
+            
+            // Collect coordinates for bounds calculation
+            routeCoordinates.push(...route.coordinates)
+          })
+        } else {
+          console.log('PDFDayMap - No routes found for day', dayIndex, 'drawing fallback direct lines')
+          // Fallback: draw direct lines between locations
+          drawFallbackRoutes(routeCoordinates)
         }
+        
+        console.log('PDFDayMap - Total route coordinates:', routeCoordinates.length)
+        return routeCoordinates
+      }
+
+      // Fallback function to draw direct lines when routes aren't available
+      const drawFallbackRoutes = (routeCoordinates) => {
+        if (day.type === 'travel' && day.route?.from?.coordinates && day.route?.to?.coordinates) {
+          // Travel day: direct line from start to end
+          const startCoords = [day.route.from.coordinates.latitude, day.route.from.coordinates.longitude]
+          const endCoords = [day.route.to.coordinates.latitude, day.route.to.coordinates.longitude]
+          const directRoute = [startCoords, endCoords]
+          
+          L.polyline(directRoute, {
+            color: '#3498DB',
+            weight: 4,
+            opacity: 0.7,
+            dashArray: '10, 10'
+          }).addTo(map)
+          
+          routeCoordinates.push(...directRoute)
+        } else if ((day.type === 'tour' || day.type === 'mixed') && day.overnightStay?.coordinates && day.pois.length > 0) {
+          // Tour day: lines from hotel to POIs and between POIs
+          const baseCoords = [day.overnightStay.coordinates.latitude, day.overnightStay.coordinates.longitude]
+          
+          day.pois.forEach((poi, index) => {
+            if (poi.coordinates) {
+              const poiCoords = [poi.coordinates.latitude, poi.coordinates.longitude]
+              let startCoords = baseCoords
+              
+              if (index > 0 && day.pois[index - 1].coordinates) {
+                startCoords = [day.pois[index - 1].coordinates.latitude, day.pois[index - 1].coordinates.longitude]
+              }
+              
+              const directRoute = [startCoords, poiCoords]
+              
+              L.polyline(directRoute, {
+                color: '#2ECC71',
+                weight: 3,
+                opacity: 0.7,
+                dashArray: '5, 5'
+              }).addTo(map)
+              
+              routeCoordinates.push(...directRoute)
+            }
+          })
+          
+          // Return to hotel
+          if (day.pois.length > 0 && day.pois[day.pois.length - 1].coordinates) {
+            const lastPoiCoords = [day.pois[day.pois.length - 1].coordinates.latitude, day.pois[day.pois.length - 1].coordinates.longitude]
+            const returnRoute = [lastPoiCoords, baseCoords]
+            
+            L.polyline(returnRoute, {
+              color: '#2ECC71',
+              weight: 3,
+              opacity: 0.7,
+              dashArray: '5, 5'
+            }).addTo(map)
+            
+            routeCoordinates.push(...returnRoute)
+          }
+        }
+      }
+        
+        // Use existing route data (no async needed)
+        const routeCoordinates = drawExistingRoutes()
 
       // Fit map to show all markers and routes
-      const allPoints = [...markers, ...routes]
+      const allPoints = [...markers, ...routeCoordinates]
       if (allPoints.length > 0) {
         const bounds = L.latLngBounds(allPoints)
         map.fitBounds(bounds, { padding: [10, 10] })
@@ -349,8 +210,8 @@ export const PDFDayMap = ({ day, dayIndex, tourData }) => {
       if (!tilesLoaded) {
         tilesLoaded = true
         // Add a delay to ensure tiles are fully rendered
-        setTimeout(async () => {
-          await addDayContent()
+        setTimeout(() => {
+          addDayContent()
         }, 500)
       }
     }
@@ -368,7 +229,7 @@ export const PDFDayMap = ({ day, dayIndex, tourData }) => {
         mapInstanceRef.current = null
       }
     }
-  }, [day, dayIndex, tourData])
+  }, [day, dayIndex, tourData, routes])
 
   // Don't render map if no location data is available
   const hasLocationData = day.overnightStay?.coordinates || day.pois.some(poi => poi.coordinates)
@@ -381,17 +242,34 @@ export const PDFDayMap = ({ day, dayIndex, tourData }) => {
     )
   }
 
+  // Check if routes are available for this day
+  const dayRoutes = routes.find(r => r.day === dayIndex)
+  const hasRoutes = dayRoutes && dayRoutes.routes && dayRoutes.routes.length > 0
+
+  // Debug info for console
+  console.log('PDFDayMap render:', {
+    dayIndex,
+    totalRoutes: routes.length,
+    dayRoutes,
+    hasRoutes,
+    routesArray: routes
+  })
+
   return (
     <div className="pdf-day-map-container">
       <h5>📍 Day Route Map</h5>
+      {!hasRoutes && routes.length === 0 && (
+        <div className="pdf-route-warning">
+          <p>⚠️ Routes not calculated yet. Click "Generate tour plan" first to see route paths.</p>
+        </div>
+      )}
+      {!hasRoutes && routes.length > 0 && (
+        <div className="pdf-route-warning">
+          <p>⚠️ No routes available for Day {dayIndex + 1}.</p>
+        </div>
+      )}
       <div className="pdf-day-map-wrapper">
         <div ref={mapRef} className="pdf-day-map"></div>
-        {routingInProgress && (
-          <div className="pdf-map-loading">
-            <div className="pdf-map-loading-spinner"></div>
-            <span>Calculating routes...</span>
-          </div>
-        )}
       </div>
     </div>
   )
