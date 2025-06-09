@@ -1,4 +1,7 @@
 # TODO
+- [ ] General
+  - [ ] add favicon
+  - [x] add github action
 
 - [x] routes calculation 
   - [x] should not be straight lines

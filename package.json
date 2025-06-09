@@ -26,6 +26,7 @@
   },
   "scripts": {
     "build": "rollup -c",
+    "postbuild": "cp public/* dist/",
     "start": "rollup -c -w"
   },
   "dependencies": {
