@@ -768,6 +768,7 @@ export const SimpleMapDisplay = React.forwardRef(({ tourData, updateTourData, on
 
   return (
     <div className="map-display">
+      <div className="map-title-controls">
       <h2>🗺️ Tour Map</h2>
       
              {/* Day Selector */}
@@ -818,8 +819,47 @@ export const SimpleMapDisplay = React.forwardRef(({ tourData, updateTourData, on
            >
              🌍 Fix Geocoding
            </button>
+           
+           {routes.length > 0 && (
+             <button 
+               onClick={() => {
+                 console.log('🗑️ Clearing route cache')
+                 setRoutes([])
+                 if (onRoutesCalculated) {
+                   onRoutesCalculated([])
+                 }
+               }}
+               style={{ 
+                 marginLeft: '0.5rem', 
+                 padding: '0.4rem 0.6rem', 
+                 background: '#e53e3e', 
+                 color: 'white', 
+                 border: 'none', 
+                 borderRadius: '4px',
+                 fontSize: '0.8rem'
+               }}
+               title="Clear cached routes and force recalculation"
+             >
+               🗑️ Clear Cache
+             </button>
+           )}
+             
+           {routes.length > 0 && (
+             <span 
+               style={{ 
+                 marginLeft: '1rem', 
+                 fontSize: '0.8rem', 
+                 color: '#48bb78',
+                 fontWeight: '500'
+               }}
+               title="Routes are cached and will load instantly on page refresh"
+             >
+               📊 {routes.length} route(s) cached
+             </span>
+           )}
          </div>
        )}
+      </div>
 
       <div className="leaflet-map-container">
         <MapContainer

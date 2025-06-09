@@ -164,7 +164,10 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData, routes = [] }) => {
   }
 
   const itinerary = tourData.plannedItinerary
-  const totalTravelTime = itinerary.reduce((total, day) => total + day.estimatedTravelTime, 0)
+  const totalTravelTime = itinerary.reduce((total, day) => {
+    const timing = getTimingBreakdown(day)
+    return total + timing.travel + timing.activities + timing.localTravel
+  }, 0)
   const totalPois = itinerary.reduce((total, day) => total + day.pois.length, 0)
 
   return (
@@ -262,7 +265,7 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData, routes = [] }) => {
                             <h4>Places to Visit:</h4>
                             <div className="pdf-pois-list">
                               {day.pois.map(poi => (
-                                <div key={poi.id} className="pdf-poi-item">
+                                <div key={poi.id} className={`pdf-poi-item ${poi.type === 'secondary' ? 'pdf-poi-item-secondary' : 'pdf-poi-item-main'}`}>
                                   <span>📍 {poi.name}</span>
                                   {poi.category !== 'General' && (
                                     <span className="pdf-poi-category">({poi.category})</span>
@@ -290,7 +293,7 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData, routes = [] }) => {
                             <h4>Places to Visit:</h4>
                             <div className="pdf-pois-list">
                               {day.pois.map(poi => (
-                                <div key={poi.id} className="pdf-poi-item">
+                                <div key={poi.id} className={`pdf-poi-item ${poi.type === 'secondary' ? 'pdf-poi-item-secondary' : 'pdf-poi-item-main'}`}>
                                   <span>📍 {poi.name}</span>
                                   {poi.category !== 'General' && (
                                     <span className="pdf-poi-category">({poi.category})</span>
@@ -342,7 +345,7 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData, routes = [] }) => {
                             
                             <div className="pdf-timing-total">
                               <span><strong>⏱️ Total day duration</strong></span>
-                              <span><strong>{Math.round(day.estimatedTravelTime / 60)}h {day.estimatedTravelTime % 60 > 0 ? `${day.estimatedTravelTime % 60}m` : ''}</strong></span>
+                              <span><strong>{Math.round((timing.travel + timing.activities + timing.localTravel) / 60)}h {(timing.travel + timing.activities + timing.localTravel) % 60 > 0 ? `${(timing.travel + timing.activities + timing.localTravel) % 60}m` : ''}</strong></span>
                             </div>
                           </div>
                         )

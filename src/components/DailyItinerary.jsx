@@ -76,7 +76,10 @@ export const DailyItinerary = ({ itinerary, startDate }) => {
   }
 
 
-  const totalTravelTime = itinerary.reduce((total, day) => total + day.estimatedTravelTime, 0)
+  const totalTravelTime = itinerary.reduce((total, day) => {
+    const timing = getTimingBreakdown(day)
+    return total + timing.travel + timing.activities + timing.localTravel
+  }, 0)
   const totalPois = itinerary.reduce((total, day) => total + day.pois.length, 0)
 
   return (
@@ -168,7 +171,7 @@ export const DailyItinerary = ({ itinerary, startDate }) => {
                       <h4>Places to Visit:</h4>
                       <div className="pois-list">
                         {day.pois.map(poi => (
-                          <div key={poi.id} className="poi-item">
+                          <div key={poi.id} className={`poi-item ${poi.type === 'secondary' ? 'secondary-poi' : 'main-poi'}`}>
                             <span className="poi-icon">📍</span>
                             <div className="poi-details">
                               <span className="poi-name">{poi.name}</span>
@@ -266,7 +269,7 @@ export const DailyItinerary = ({ itinerary, startDate }) => {
                         <div className="timing-total">
                           <span className="timing-icon">⏱️</span>
                           <span className="timing-label"><strong>Total day duration</strong></span>
-                          <span className="timing-duration"><strong>{Math.round(day.estimatedTravelTime / 60)}h {day.estimatedTravelTime % 60 > 0 ? `${day.estimatedTravelTime % 60}m` : ''}</strong></span>
+                          <span className="timing-duration"><strong>{Math.round((timing.travel + timing.activities + timing.localTravel) / 60)}h {(timing.travel + timing.activities + timing.localTravel) % 60 > 0 ? `${(timing.travel + timing.activities + timing.localTravel) % 60}m` : ''}</strong></span>
                         </div>
                       </div>
                     )

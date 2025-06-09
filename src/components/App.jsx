@@ -20,7 +20,21 @@ export const App = () => {
   })
   
   const [isPDFPreviewOpen, setIsPDFPreviewOpen] = useState(false)
-  const [mapRoutes, setMapRoutes] = useState([])
+  const [mapRoutes, setMapRoutes] = useState(() => {
+    // Load routes from localStorage on app initialization
+    try {
+      const savedRoutes = localStorage.getItem('tourPlannerRoutes')
+      if (savedRoutes) {
+        const routes = JSON.parse(savedRoutes)
+        console.log('🗂️ Loaded', routes.length, 'route(s) from localStorage cache')
+        return routes
+      }
+      return []
+    } catch (error) {
+      console.warn('Failed to load routes from localStorage:', error)
+      return []
+    }
+  })
   const mapRef = React.useRef()
 
   // Save to localStorage whenever tourData changes
@@ -28,8 +42,71 @@ export const App = () => {
     localStorage.setItem('tourPlannerData', JSON.stringify(tourData))
   }, [tourData])
 
+  // Validate stored routes on app startup
+  useEffect(() => {
+    if (mapRoutes.length > 0 && !areStoredRoutesValid()) {
+      console.log('Stored routes are outdated, clearing them')
+      setMapRoutes([])
+      clearRoutesFromStorage()
+    }
+  }, []) // Only run on mount
+
+  // Save routes to localStorage
+  const saveRoutesToStorage = (routes) => {
+    try {
+      localStorage.setItem('tourPlannerRoutes', JSON.stringify(routes))
+      localStorage.setItem('tourPlannerRoutesTimestamp', Date.now().toString())
+    } catch (error) {
+      console.warn('Failed to save routes to localStorage:', error)
+    }
+  }
+
+  // Clear routes from localStorage  
+  const clearRoutesFromStorage = () => {
+    try {
+      localStorage.removeItem('tourPlannerRoutes')
+      localStorage.removeItem('tourPlannerRoutesTimestamp')
+    } catch (error) {
+      console.warn('Failed to clear routes from localStorage:', error)
+    }
+  }
+
+  // Check if stored routes are still valid for current tour data
+  const areStoredRoutesValid = () => {
+    try {
+      const routesTimestamp = localStorage.getItem('tourPlannerRoutesTimestamp')
+      const dataTimestamp = localStorage.getItem('tourPlannerDataTimestamp')
+      
+      // If we have both timestamps and routes were calculated after data was last updated
+      if (routesTimestamp && dataTimestamp) {
+        return parseInt(routesTimestamp) > parseInt(dataTimestamp)
+      }
+      
+      return false
+    } catch (error) {
+      return false
+    }
+  }
+
   const updateTourData = (updates) => {
     setTourData(prev => ({ ...prev, ...updates }))
+    
+    // Clear routes if significant tour data changes
+    const significantChanges = [
+      'plannedItinerary', 'pois', 'overnightStays', 'homeLocation', 'startDate', 'endDate'
+    ]
+    
+    if (significantChanges.some(key => updates.hasOwnProperty(key))) {
+      setMapRoutes([])
+      clearRoutesFromStorage()
+    }
+    
+    // Update data timestamp
+    try {
+      localStorage.setItem('tourPlannerDataTimestamp', Date.now().toString())
+    } catch (error) {
+      console.warn('Failed to save data timestamp:', error)
+    }
   }
 
   const openPDFPreview = () => {
@@ -41,8 +118,15 @@ export const App = () => {
   }
 
   const handleTourGenerated = () => {
+    // Check if we already have valid cached routes
+    if (mapRoutes.length > 0 && areStoredRoutesValid()) {
+      console.log('✅ Using cached routes, skipping calculation')
+      return
+    }
+    
     // Trigger route calculation in the map component
     if (mapRef.current?.calculateRoutes) {
+      console.log('🔄 Calculating fresh routes...')
       mapRef.current.calculateRoutes()
     }
   }
@@ -72,7 +156,11 @@ export const App = () => {
             ref={mapRef}
             tourData={tourData}
             updateTourData={updateTourData}
-            onRoutesCalculated={setMapRoutes}
+            onRoutesCalculated={(routes) => {
+              console.log('💾 Saving', routes.length, 'route(s) to localStorage cache')
+              setMapRoutes(routes)
+              saveRoutesToStorage(routes)
+            }}
           />
         </div>
       </div>
