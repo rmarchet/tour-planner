@@ -1,13 +1,18 @@
 # TODO
 - [ ] General
-  - [ ] add favicon
+  - [x] add favicon
   - [x] add github action
+  - [ ] split CSS
 
 - [x] routes calculation 
   - [x] should not be straight lines
   - [x] smarter algorithm
   - [x] loading spinner while routes are calculated
   - [ ] cache route in localStorage
+  - [x] first day route consider the travel from Home → POI → Hotel
+  - [x] last day route consider the travel from Hotel → POI → Home
+  - [x] travel times computed on real routes
+  - [x] travel times minutes trim
 
 - [x] import JSON
 - [ ] export PDF
@@ -16,7 +21,7 @@
   - [x] map larger and without zoom controls
   - [x] map exported to PDF has messed overlay
   - [x] differentiate secondary POI with recognizable style
-  - [ ] better cover for PDF
+  - [ ] better cover for PDF with table of contents
 - [x] tour map filtered by day shows only the locations of that date
 - [ ] Main map
   - [x] only update routes when manually click "Generate Tour Plan"

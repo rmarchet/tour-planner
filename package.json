@@ -17,6 +17,7 @@
     "babel-preset-env": "^1.7.0",
     "babel-preset-react": "^6.24.1",
     "postcss": "^8.5.3",
+    "rimraf": "^6.0.1",
     "rollup": "^4.38.0",
     "rollup-plugin-babel": "^4.4.0",
     "rollup-plugin-livereload": "^2.0.5",
@@ -27,6 +28,7 @@
   "scripts": {
     "build": "rollup -c",
     "postbuild": "cp public/* dist/",
+    "prestart": "rimraf dist",
     "start": "rollup -c -w"
   },
   "dependencies": {

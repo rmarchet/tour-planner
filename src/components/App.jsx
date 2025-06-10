@@ -147,6 +147,7 @@ export const App = () => {
             <DailyItinerary 
               itinerary={tourData.plannedItinerary}
               startDate={tourData.startDate}
+              mapRoutes={mapRoutes}
             />
           )}
         </div>

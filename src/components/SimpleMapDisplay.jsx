@@ -282,119 +282,239 @@ export const SimpleMapDisplay = React.forwardRef(({ tourData, updateTourData, on
         console.log(`Calculating routes for Day ${dayIndex + 1}:`, day)
 
         if (day.type === 'travel' || day.type === 'mixed') {
-          // Travel day - car route between cities
-          console.log('Travel day route:', day.route)
-          if (day.route) {
-            const start = day.route.from.coordinates
-            const end = day.route.to.coordinates
-            
-            console.log('Travel coordinates DEBUG:', { 
-             start, 
-             end,
-             fromLocation: day.route.from.location,
-             toLocation: day.route.to.location,
-             fromCoords: day.route.from.coordinates,
-             toCoords: day.route.to.coordinates,
-             fromCoordsType: typeof day.route.from.coordinates,
-             toCoordsType: typeof day.route.to.coordinates
-           })
-            
-            if (start && end) {
-              const routeResult = await getRoute(start, end, 'driving-car')
+          // Skip travel route if there are POIs to visit on first/last day
+          // (POIs will handle the route from/to home)
+          const isFirstDay = dayIndex === 0
+          const isLastDay = dayIndex === tourData.plannedItinerary.length - 1
+          const shouldSkipTravelRoute = (isFirstDay || isLastDay) && day.pois && day.pois.length > 0
+          
+          if (!shouldSkipTravelRoute) {
+            // Travel day - car route between cities
+            console.log('Travel day route:', day.route)
+            if (day.route) {
+              const start = day.route.from.coordinates
+              const end = day.route.to.coordinates
               
-              console.log('Travel route calculated:', { 
-                distance: routeResult.distance, 
-                coordsLength: routeResult.coordinates.length,
-                duration: routeResult.duration 
-              })
+              console.log('Travel coordinates:', { start, end })
               
-              dayRoutes.push({
-                coordinates: routeResult.coordinates,
-                color: dayColors[dayIndex % dayColors.length],
-                type: 'driving',
-                distance: routeResult.distance,
-                duration: routeResult.duration,
-                from: day.route.from.location,
-                to: day.route.to.location
-              })
+              if (start && end) {
+                const routeResult = await getRoute(start, end, 'driving-car')
+                
+                console.log('Travel route calculated:', { 
+                  distance: routeResult.distance, 
+                  coordsLength: routeResult.coordinates.length,
+                  duration: routeResult.duration 
+                })
+                
+                dayRoutes.push({
+                  coordinates: routeResult.coordinates,
+                  color: dayColors[dayIndex % dayColors.length],
+                  type: 'driving',
+                  distance: routeResult.distance,
+                  duration: routeResult.duration,
+                  from: day.route.from.location,
+                  to: day.route.to.location
+                })
+              } else {
+                console.log('Missing coordinates for travel day')
+              }
             } else {
-              console.log('Missing coordinates for travel day')
+              console.log('No route object for travel day')
             }
           } else {
-            console.log('No route object for travel day')
+            console.log(`Skipping travel route for ${isFirstDay ? 'first' : 'last'} day with POIs - will route through POIs instead`)
           }
         } 
         
         if (day.type === 'tour' || day.type === 'mixed') {
           // Tour day - walking routes within city
-          const overnightStay = tourData.overnightStays.find(stay => stay.id === day.overnightStayId)
+          const isFirstDay = dayIndex === 0
+          const isLastDay = dayIndex === tourData.plannedItinerary.length - 1
+          let overnightStay = tourData.overnightStays.find(stay => stay.id === day.overnightStayId)
           
-          console.log('Tour day DEBUG:', { 
-           overnightStayId: day.overnightStayId, 
-           overnightStay, 
-           poisCount: day.pois.length,
-           overnightStayCoords: overnightStay?.coordinates,
-           overnightStayLocation: overnightStay?.location,
-           poisWithCoords: day.pois.map(poi => ({ name: poi.name, coords: poi.coordinates, hasCoords: !!poi.coordinates }))
-         })
+          // For first day, if no overnight stay ID, get it from the route destination
+          if (isFirstDay && !overnightStay && day.route?.to?.coordinates) {
+            console.log('🏨 First day: looking for overnight stay from route.to')
+            overnightStay = tourData.overnightStays.find(stay => {
+              if (!stay.coordinates) return false
+              const stayCoords = [stay.coordinates.latitude, stay.coordinates.longitude]
+              const toCoords = [day.route.to.coordinates.latitude, day.route.to.coordinates.longitude]
+              return Math.abs(stayCoords[0] - toCoords[0]) < 0.01 && Math.abs(stayCoords[1] - toCoords[1]) < 0.01
+            })
+            console.log('🏨 Found overnight stay from route destination:', overnightStay?.location)
+          }
           
-          if (overnightStay?.coordinates && day.pois.length > 0) {
-            console.log('Tour day has overnight stay and POIs, calculating routes...')
-            // Route from hotel to first POI
-            const firstPoi = day.pois[0]
-            if (firstPoi.coordinates) {
-              const routeResult = await getRoute(overnightStay.coordinates, firstPoi.coordinates, 'foot-walking')
+          // For last day, if no overnight stay ID, try to get the overnight stay from the travel route
+          if (isLastDay && !overnightStay && day.route?.from?.coordinates) {
+            console.log('🏨 Last day: looking for overnight stay from route.from')
+            // Find overnight stay that matches the "from" location of the route
+            overnightStay = tourData.overnightStays.find(stay => {
+              if (!stay.coordinates) return false
+              const stayCoords = [stay.coordinates.latitude, stay.coordinates.longitude]
+              const fromCoords = [day.route.from.coordinates.latitude, day.route.from.coordinates.longitude]
+              return Math.abs(stayCoords[0] - fromCoords[0]) < 0.01 && Math.abs(stayCoords[1] - fromCoords[1]) < 0.01
+            })
+            console.log('🏨 Found overnight stay from route:', overnightStay?.location)
+          }
+          
+          console.log('🚶 TOUR LOGIC RUNNING for day', dayIndex + 1)
+          console.log('Tour day:', { 
+            overnightStayId: day.overnightStayId, 
+            overnightStay: overnightStay?.location, 
+            poisCount: day.pois.length, 
+            isFirstDay,
+            isLastDay,
+            homeLocation: tourData.homeLocation?.location,
+            homeCoords: tourData.homeLocation?.coordinates,
+            routeFrom: day.route?.from?.location,
+            routeTo: day.route?.to?.location
+          })
+          
+          if (day.pois.length > 0) {
+            // First day with POIs: home → POI → hotel
+            if (isFirstDay && tourData.homeLocation?.coordinates && overnightStay?.coordinates) {
+              console.log('🏠 First day: Creating HOME to POI to HOTEL routes')
               
-              dayRoutes.push({
-                coordinates: routeResult.coordinates,
-                color: dayColors[dayIndex % dayColors.length],
-                type: 'walking',
-                distance: routeResult.distance,
-                duration: routeResult.duration,
-                from: overnightStay.location,
-                to: firstPoi.name
-              })
-            }
-
-            // Routes between POIs
-            for (let i = 0; i < day.pois.length - 1; i++) {
-              const currentPoi = day.pois[i]
-              const nextPoi = day.pois[i + 1]
-              
-              if (currentPoi.coordinates && nextPoi.coordinates) {
-                const routeResult = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
+              // Route from home to first POI
+              const firstPoi = day.pois[0]
+              if (firstPoi.coordinates) {
+                const routeResult = await getRoute(tourData.homeLocation.coordinates, firstPoi.coordinates, 'driving-car')
                 
                 dayRoutes.push({
                   coordinates: routeResult.coordinates,
                   color: dayColors[dayIndex % dayColors.length],
-                  type: 'walking',
+                  type: 'driving',
                   distance: routeResult.distance,
                   duration: routeResult.duration,
-                  from: currentPoi.name,
-                  to: nextPoi.name
+                  from: tourData.homeLocation.location,
+                  to: firstPoi.name
+                })
+                console.log('✅ HOME to first POI route created')
+              }
+
+              // Routes between POIs
+              for (let i = 0; i < day.pois.length - 1; i++) {
+                const currentPoi = day.pois[i]
+                const nextPoi = day.pois[i + 1]
+                
+                if (currentPoi.coordinates && nextPoi.coordinates) {
+                  const routeResult = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
+                  
+                  dayRoutes.push({
+                    coordinates: routeResult.coordinates,
+                    color: dayColors[dayIndex % dayColors.length],
+                    type: 'walking',
+                    distance: routeResult.distance,
+                    duration: routeResult.duration,
+                    from: currentPoi.name,
+                    to: nextPoi.name
+                  })
+                }
+              }
+
+              // Route from last POI to hotel
+              const lastPoi = day.pois[day.pois.length - 1]
+              if (lastPoi.coordinates) {
+                const routeResult = await getRoute(lastPoi.coordinates, overnightStay.coordinates, 'driving-car')
+                
+                dayRoutes.push({
+                  coordinates: routeResult.coordinates,
+                  color: dayColors[dayIndex % dayColors.length],
+                  type: 'driving',
+                  distance: routeResult.distance,
+                  duration: routeResult.duration,
+                  from: lastPoi.name,
+                  to: overnightStay.location
+                })
+                console.log('✅ Last POI to HOTEL route created')
+              }
+              
+            } else if (overnightStay?.coordinates) {
+              // Regular tour day or last day: hotel → POI(s) → hotel/home
+              console.log('🏨 Regular tour day: Creating HOTEL to POI routes')
+              
+              // Route from hotel to first POI (by car)
+              const firstPoi = day.pois[0]
+              if (firstPoi.coordinates) {
+                const routeResult = await getRoute(overnightStay.coordinates, firstPoi.coordinates, 'driving-car')
+                
+                dayRoutes.push({
+                  coordinates: routeResult.coordinates,
+                  color: dayColors[dayIndex % dayColors.length],
+                  type: 'driving',
+                  distance: routeResult.distance,
+                  duration: routeResult.duration,
+                  from: overnightStay.location,
+                  to: firstPoi.name
                 })
               }
-            }
 
-            // Route from last POI back to hotel
-            const lastPoi = day.pois[day.pois.length - 1]
-            if (lastPoi.coordinates) {
-              const routeResult = await getRoute(lastPoi.coordinates, overnightStay.coordinates, 'foot-walking')
-              
-              dayRoutes.push({
-                coordinates: routeResult.coordinates,
-                color: dayColors[dayIndex % dayColors.length],
-                type: 'walking',
-                distance: routeResult.distance,
-                duration: routeResult.duration,
-                from: lastPoi.name,
-                to: overnightStay.location
-              })
+              // Routes between POIs (walking)
+              for (let i = 0; i < day.pois.length - 1; i++) {
+                const currentPoi = day.pois[i]
+                const nextPoi = day.pois[i + 1]
+                
+                if (currentPoi.coordinates && nextPoi.coordinates) {
+                  const routeResult = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
+                  
+                  dayRoutes.push({
+                    coordinates: routeResult.coordinates,
+                    color: dayColors[dayIndex % dayColors.length],
+                    type: 'walking',
+                    distance: routeResult.distance,
+                    duration: routeResult.duration,
+                    from: currentPoi.name,
+                    to: nextPoi.name
+                  })
+                }
+              }
+
+              // Route from last POI - on last day go to home, otherwise back to hotel by car
+              const lastPoi = day.pois[day.pois.length - 1]
+              if (lastPoi.coordinates) {
+                if (isLastDay && tourData.homeLocation?.coordinates) {
+                  // Last day: POI to home (by car)
+                  const routeResult = await getRoute(lastPoi.coordinates, tourData.homeLocation.coordinates, 'driving-car')
+                  
+                  dayRoutes.push({
+                    coordinates: routeResult.coordinates,
+                    color: dayColors[dayIndex % dayColors.length],
+                    type: 'driving',
+                    distance: routeResult.distance,
+                    duration: routeResult.duration,
+                    from: lastPoi.name,
+                    to: tourData.homeLocation.location
+                  })
+                  console.log('✅ Last POI to HOME route created')
+                } else {
+                  // Regular day: POI back to hotel (by car)
+                  const routeResult = await getRoute(lastPoi.coordinates, overnightStay.coordinates, 'driving-car')
+                  
+                  dayRoutes.push({
+                    coordinates: routeResult.coordinates,
+                    color: dayColors[dayIndex % dayColors.length],
+                    type: 'driving',
+                    distance: routeResult.distance,
+                    duration: routeResult.duration,
+                    from: lastPoi.name,
+                    to: overnightStay.location
+                  })
+                  console.log('✅ POI to HOTEL route created')
+                }
+              }
             }
+          } else {
+            console.log('Tour day missing POIs')
           }
         }
 
         console.log(`Day ${dayIndex + 1} routes:`, dayRoutes)
+        if (dayIndex === 0) {
+          console.log(`🏁 FIRST DAY ROUTES:`, dayRoutes.map(r => ({ from: r.from, to: r.to, type: r.type })))
+        }
+        if (dayIndex === tourData.plannedItinerary.length - 1) {
+          console.log(`🏁 LAST DAY ROUTES:`, dayRoutes.map(r => ({ from: r.from, to: r.to, type: r.type })))
+        }
         
         allRoutes.push({
           day: dayIndex,
@@ -611,108 +731,247 @@ export const SimpleMapDisplay = React.forwardRef(({ tourData, updateTourData, on
         const dayRoutes = []
         
         console.log(`Processing Day ${dayIndex + 1}:`, day)
+        console.log(`Day ${dayIndex + 1} details:`, { 
+          type: day.type, 
+          isLastDay: dayIndex === tourData.plannedItinerary.length - 1,
+          hasPois: day.pois?.length > 0,
+          hasRoute: !!day.route 
+        })
         
         if (day.type === 'travel' || day.type === 'mixed') {
-          // Travel day - car route between cities
-          console.log('Travel day route:', day.route)
-          if (day.route) {
-            const start = day.route.from.coordinates
-            const end = day.route.to.coordinates
-            
-            console.log('Travel coordinates:', { start, end })
-            
-            if (start && end) {
-              const routeResult = await getRoute(start, end, 'driving-car')
+          // Skip travel route if there are POIs to visit on first/last day
+          // (POIs will handle the route from/to home)
+          const isFirstDay = dayIndex === 0
+          const isLastDay = dayIndex === tourData.plannedItinerary.length - 1
+          const shouldSkipTravelRoute = (isFirstDay || isLastDay) && day.pois && day.pois.length > 0
+          
+          if (!shouldSkipTravelRoute) {
+            // Travel day - car route between cities
+            console.log('Travel day route:', day.route)
+            if (day.route) {
+              const start = day.route.from.coordinates
+              const end = day.route.to.coordinates
               
-              console.log('Travel route calculated:', { 
-                distance: routeResult.distance, 
-                coordsLength: routeResult.coordinates.length,
-                duration: routeResult.duration 
-              })
+              console.log('Travel coordinates:', { start, end })
               
-              dayRoutes.push({
-                coordinates: routeResult.coordinates,
-                color: dayColors[dayIndex % dayColors.length],
-                type: 'driving',
-                distance: routeResult.distance,
-                duration: routeResult.duration,
-                from: day.route.from.location,
-                to: day.route.to.location
-              })
+              if (start && end) {
+                const routeResult = await getRoute(start, end, 'driving-car')
+                
+                console.log('Travel route calculated:', { 
+                  distance: routeResult.distance, 
+                  coordsLength: routeResult.coordinates.length,
+                  duration: routeResult.duration 
+                })
+                
+                dayRoutes.push({
+                  coordinates: routeResult.coordinates,
+                  color: dayColors[dayIndex % dayColors.length],
+                  type: 'driving',
+                  distance: routeResult.distance,
+                  duration: routeResult.duration,
+                  from: day.route.from.location,
+                  to: day.route.to.location
+                })
+              } else {
+                console.log('Missing coordinates for travel day')
+              }
             } else {
-              console.log('Missing coordinates for travel day')
+              console.log('No route object for travel day')
             }
           } else {
-            console.log('No route object for travel day')
+            console.log(`Skipping travel route for ${isFirstDay ? 'first' : 'last'} day with POIs - will route through POIs instead`)
           }
         } 
         
         if (day.type === 'tour' || day.type === 'mixed') {
           // Tour day - walking routes within city
-          const overnightStay = tourData.overnightStays.find(stay => stay.id === day.overnightStayId)
+          const isFirstDay = dayIndex === 0
+          const isLastDay = dayIndex === tourData.plannedItinerary.length - 1
+          let overnightStay = tourData.overnightStays.find(stay => stay.id === day.overnightStayId)
           
-          console.log('Tour day:', { overnightStayId: day.overnightStayId, overnightStay, poisCount: day.pois.length })
+          // For first day, if no overnight stay ID, get it from the route destination
+          if (isFirstDay && !overnightStay && day.route?.to?.coordinates) {
+            console.log('🏨 First day: looking for overnight stay from route.to')
+            overnightStay = tourData.overnightStays.find(stay => {
+              if (!stay.coordinates) return false
+              const stayCoords = [stay.coordinates.latitude, stay.coordinates.longitude]
+              const toCoords = [day.route.to.coordinates.latitude, day.route.to.coordinates.longitude]
+              return Math.abs(stayCoords[0] - toCoords[0]) < 0.01 && Math.abs(stayCoords[1] - toCoords[1]) < 0.01
+            })
+            console.log('🏨 Found overnight stay from route destination:', overnightStay?.location)
+          }
           
-          if (overnightStay?.coordinates && day.pois.length > 0) {
-            console.log('Tour day has overnight stay and POIs, calculating routes...')
-            
-            // Route from hotel to first POI
-            const firstPoi = day.pois[0]
-            if (firstPoi.coordinates) {
-              const routeResult = await getRoute(overnightStay.coordinates, firstPoi.coordinates, 'foot-walking')
+          // For last day, if no overnight stay ID, try to get the overnight stay from the travel route
+          if (isLastDay && !overnightStay && day.route?.from?.coordinates) {
+            console.log('🏨 Last day: looking for overnight stay from route.from')
+            // Find overnight stay that matches the "from" location of the route
+            overnightStay = tourData.overnightStays.find(stay => {
+              if (!stay.coordinates) return false
+              const stayCoords = [stay.coordinates.latitude, stay.coordinates.longitude]
+              const fromCoords = [day.route.from.coordinates.latitude, day.route.from.coordinates.longitude]
+              return Math.abs(stayCoords[0] - fromCoords[0]) < 0.01 && Math.abs(stayCoords[1] - fromCoords[1]) < 0.01
+            })
+            console.log('🏨 Found overnight stay from route:', overnightStay?.location)
+          }
+          
+          console.log('🚶 FORCE TOUR LOGIC RUNNING for day', dayIndex + 1)
+          console.log('Tour day:', { 
+            overnightStayId: day.overnightStayId, 
+            overnightStay: overnightStay?.location, 
+            poisCount: day.pois.length, 
+            isFirstDay,
+            isLastDay,
+            homeLocation: tourData.homeLocation?.location,
+            homeCoords: tourData.homeLocation?.coordinates,
+            routeFrom: day.route?.from?.location,
+            routeTo: day.route?.to?.location
+          })
+          
+          if (day.pois.length > 0) {
+            // First day with POIs: home → POI → hotel
+            if (isFirstDay && tourData.homeLocation?.coordinates && overnightStay?.coordinates) {
+              console.log('🏠 First day: Creating HOME to POI to HOTEL routes')
               
-              dayRoutes.push({
-                coordinates: routeResult.coordinates,
-                color: dayColors[dayIndex % dayColors.length],
-                type: 'walking',
-                distance: routeResult.distance,
-                duration: routeResult.duration,
-                from: overnightStay.location,
-                to: firstPoi.name
-              })
-            }
-
-            // Routes between POIs
-            for (let i = 0; i < day.pois.length - 1; i++) {
-              const currentPoi = day.pois[i]
-              const nextPoi = day.pois[i + 1]
-              
-              if (currentPoi.coordinates && nextPoi.coordinates) {
-                const routeResult = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
+              // Route from home to first POI
+              const firstPoi = day.pois[0]
+              if (firstPoi.coordinates) {
+                const routeResult = await getRoute(tourData.homeLocation.coordinates, firstPoi.coordinates, 'driving-car')
                 
                 dayRoutes.push({
                   coordinates: routeResult.coordinates,
                   color: dayColors[dayIndex % dayColors.length],
-                  type: 'walking',
+                  type: 'driving',
                   distance: routeResult.distance,
                   duration: routeResult.duration,
-                  from: currentPoi.name,
-                  to: nextPoi.name
+                  from: tourData.homeLocation.location,
+                  to: firstPoi.name
+                })
+                console.log('✅ HOME to first POI route created')
+              }
+
+              // Routes between POIs
+              for (let i = 0; i < day.pois.length - 1; i++) {
+                const currentPoi = day.pois[i]
+                const nextPoi = day.pois[i + 1]
+                
+                if (currentPoi.coordinates && nextPoi.coordinates) {
+                  const routeResult = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
+                  
+                  dayRoutes.push({
+                    coordinates: routeResult.coordinates,
+                    color: dayColors[dayIndex % dayColors.length],
+                    type: 'walking',
+                    distance: routeResult.distance,
+                    duration: routeResult.duration,
+                    from: currentPoi.name,
+                    to: nextPoi.name
+                  })
+                }
+              }
+
+              // Route from last POI to hotel
+              const lastPoi = day.pois[day.pois.length - 1]
+              if (lastPoi.coordinates) {
+                const routeResult = await getRoute(lastPoi.coordinates, overnightStay.coordinates, 'driving-car')
+                
+                dayRoutes.push({
+                  coordinates: routeResult.coordinates,
+                  color: dayColors[dayIndex % dayColors.length],
+                  type: 'driving',
+                  distance: routeResult.distance,
+                  duration: routeResult.duration,
+                  from: lastPoi.name,
+                  to: overnightStay.location
+                })
+                console.log('✅ Last POI to HOTEL route created')
+              }
+              
+            } else if (overnightStay?.coordinates) {
+              // Regular tour day or last day: hotel → POI(s) → hotel/home
+              console.log('🏨 Regular tour day: Creating HOTEL to POI routes')
+              
+              // Route from hotel to first POI (by car)
+              const firstPoi = day.pois[0]
+              if (firstPoi.coordinates) {
+                const routeResult = await getRoute(overnightStay.coordinates, firstPoi.coordinates, 'driving-car')
+                
+                dayRoutes.push({
+                  coordinates: routeResult.coordinates,
+                  color: dayColors[dayIndex % dayColors.length],
+                  type: 'driving',
+                  distance: routeResult.distance,
+                  duration: routeResult.duration,
+                  from: overnightStay.location,
+                  to: firstPoi.name
                 })
               }
-            }
 
-            // Route from last POI back to hotel
-            const lastPoi = day.pois[day.pois.length - 1]
-            if (lastPoi.coordinates) {
-              const routeResult = await getRoute(lastPoi.coordinates, overnightStay.coordinates, 'foot-walking')
-              
-              dayRoutes.push({
-                coordinates: routeResult.coordinates,
-                color: dayColors[dayIndex % dayColors.length],
-                type: 'walking',
-                distance: routeResult.distance,
-                duration: routeResult.duration,
-                from: lastPoi.name,
-                to: overnightStay.location
-              })
+              // Routes between POIs (walking)
+              for (let i = 0; i < day.pois.length - 1; i++) {
+                const currentPoi = day.pois[i]
+                const nextPoi = day.pois[i + 1]
+                
+                if (currentPoi.coordinates && nextPoi.coordinates) {
+                  const routeResult = await getRoute(currentPoi.coordinates, nextPoi.coordinates, 'foot-walking')
+                  
+                  dayRoutes.push({
+                    coordinates: routeResult.coordinates,
+                    color: dayColors[dayIndex % dayColors.length],
+                    type: 'walking',
+                    distance: routeResult.distance,
+                    duration: routeResult.duration,
+                    from: currentPoi.name,
+                    to: nextPoi.name
+                  })
+                }
+              }
+
+              // Route from last POI - on last day go to home, otherwise back to hotel by car
+              const lastPoi = day.pois[day.pois.length - 1]
+              if (lastPoi.coordinates) {
+                if (isLastDay && tourData.homeLocation?.coordinates) {
+                  // Last day: POI to home (by car)
+                  const routeResult = await getRoute(lastPoi.coordinates, tourData.homeLocation.coordinates, 'driving-car')
+                  
+                  dayRoutes.push({
+                    coordinates: routeResult.coordinates,
+                    color: dayColors[dayIndex % dayColors.length],
+                    type: 'driving',
+                    distance: routeResult.distance,
+                    duration: routeResult.duration,
+                    from: lastPoi.name,
+                    to: tourData.homeLocation.location
+                  })
+                  console.log('✅ Last POI to HOME route created')
+                } else {
+                  // Regular day: POI back to hotel (by car)
+                  const routeResult = await getRoute(lastPoi.coordinates, overnightStay.coordinates, 'driving-car')
+                  
+                  dayRoutes.push({
+                    coordinates: routeResult.coordinates,
+                    color: dayColors[dayIndex % dayColors.length],
+                    type: 'driving',
+                    distance: routeResult.distance,
+                    duration: routeResult.duration,
+                    from: lastPoi.name,
+                    to: overnightStay.location
+                  })
+                  console.log('✅ POI to HOTEL route created')
+                }
+              }
             }
           } else {
-            console.log('Tour day missing overnight stay or POIs')
+            console.log('Tour day missing POIs')
           }
         }
         
         console.log(`Day ${dayIndex + 1} routes:`, dayRoutes)
+        if (dayIndex === 0) {
+          console.log(`🏁 FIRST DAY ROUTES:`, dayRoutes.map(r => ({ from: r.from, to: r.to, type: r.type })))
+        }
+        if (dayIndex === tourData.plannedItinerary.length - 1) {
+          console.log(`🏁 LAST DAY ROUTES:`, dayRoutes.map(r => ({ from: r.from, to: r.to, type: r.type })))
+        }
         
         allRoutes.push({
           day: dayIndex,
@@ -969,11 +1228,11 @@ export const SimpleMapDisplay = React.forwardRef(({ tourData, updateTourData, on
           <div className="legend-items">
             <div className="legend-item">
               <div className="route-line driving"></div>
-              <span>🚗 Car travel (between cities)</span>
+              <span>🚗 Car travel (home ↔ hotel ↔ POI)</span>
             </div>
             <div className="legend-item">
               <div className="route-line walking"></div>
-              <span>🚶 Walking (within cities)</span>
+              <span>🚶 Walking (POI ↔ POI)</span>
             </div>
           </div>
           

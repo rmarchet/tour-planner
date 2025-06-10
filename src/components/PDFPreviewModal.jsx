@@ -92,7 +92,7 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData, routes = [] }) => {
   }
 
   // Helper function to calculate detailed timing breakdown
-  const getTimingBreakdown = (day) => {
+  const getTimingBreakdown = (day, dayIndex) => {
     const breakdown = {
       travel: 0,
       activities: 0,
@@ -131,41 +131,68 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData, routes = [] }) => {
       return distinctLocations.size
     }
     
+    // Get real route data for this day if available
+    const dayRouteData = routes.find(r => r.day === dayIndex)
+    const routesData = dayRouteData?.routes || []
+    
+    // Calculate actual travel times from route data
+    const drivingRoutes = routesData.filter(r => r.type === 'driving')
+    const walkingRoutes = routesData.filter(r => r.type === 'walking')
+    
+    // Determine if this is the last day (return home)
+    const isLastDay = dayIndex === itinerary.length - 1
+    const isFirstDay = dayIndex === 0
+    
     if (day.type === 'travel') {
-      // Pure travel day
-      breakdown.travel = day.estimatedTravelTime
-      breakdown.travelType = day.route?.to?.location === day.route?.from?.location ? 'round-trip' : 'one-way'
+      // Pure travel day - use actual route duration if available
+      if (drivingRoutes.length > 0 && drivingRoutes[0].duration) {
+        breakdown.travel = drivingRoutes[0].duration // Duration is in minutes from OSRM
+      } else {
+        breakdown.travel = day.estimatedTravelTime || 180 // Fallback to estimated time
+      }
       
-      // Determine if it's return travel (to home)
-      const isReturnTravel = day.route?.to?.location && 
-        (day.route.to.location.toLowerCase().includes('home') || 
-         day.title?.toLowerCase().includes('return'))
-      breakdown.travelType = isReturnTravel ? 'return' : 'departure'
+      breakdown.travelType = isLastDay ? 'return' : 'departure'
       
     } else if (day.type === 'mixed') {
       // Mixed day: travel + activities
-      const baseTravelTime = 180 // Base travel time for mixed days
-      breakdown.travel = baseTravelTime
+      if (drivingRoutes.length > 0 && drivingRoutes[0].duration) {
+        breakdown.travel = drivingRoutes[0].duration // Use actual calculated time
+      } else {
+        breakdown.travel = 180 // Fallback for mixed days
+      }
       
-      // Local travel based on distinct locations only
-      const distinctLocations = getDistinctLocations(day.pois)
-      const baseLocalTravel = Math.max(0, (distinctLocations - 1) * 30) // 30 min between distinct locations
-      breakdown.localTravel = Math.max(0, Math.min(baseLocalTravel, day.estimatedTravelTime - breakdown.activities - baseTravelTime))
-      breakdown.travelType = day.title?.toLowerCase().includes('return') ? 'return' : 'departure'
+      // Local travel from actual walking routes
+      if (walkingRoutes.length > 0) {
+        breakdown.localTravel = walkingRoutes.reduce((total, route) => {
+          return total + (route.duration || 30) // Use actual duration or 30min default
+        }, 0)
+      } else {
+        // Fallback calculation based on distinct locations
+        const distinctLocations = getDistinctLocations(day.pois)
+        breakdown.localTravel = Math.max(0, (distinctLocations - 1) * 30)
+      }
+      
+      breakdown.travelType = isLastDay ? 'return' : 'departure'
       
     } else {
-      // Tour day: local travel between distinct locations only
-      const distinctLocations = getDistinctLocations(day.pois)
-      const baseLocalTravel = Math.max(30, (distinctLocations - 1) * 45) // 45 min between distinct locations
-      breakdown.localTravel = Math.max(0, Math.min(baseLocalTravel, day.estimatedTravelTime - breakdown.activities))
+      // Tour day: only local travel between POIs
+      if (walkingRoutes.length > 0) {
+        breakdown.localTravel = walkingRoutes.reduce((total, route) => {
+          return total + (route.duration || 30) // Use actual duration or 30min default
+        }, 0)
+      } else {
+        // Fallback calculation based on distinct locations
+        const distinctLocations = getDistinctLocations(day.pois)
+        breakdown.localTravel = Math.max(30, (distinctLocations - 1) * 45)
+      }
     }
     
     return breakdown
   }
 
   const itinerary = tourData.plannedItinerary
-  const totalTravelTime = itinerary.reduce((total, day) => {
-    const timing = getTimingBreakdown(day)
+  const totalTravelTime = itinerary.reduce((total, day, index) => {
+    const timing = getTimingBreakdown(day, index)
     return total + timing.travel + timing.activities + timing.localTravel
   }, 0)
   const totalPois = itinerary.reduce((total, day) => total + day.pois.length, 0)
@@ -213,6 +240,67 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData, routes = [] }) => {
                   </div>
                   <div className="summary-item">
                     <strong>End Date:</strong> {format(new Date(tourData.endDate), 'MMMM dd, yyyy')}
+                  </div>
+                </div>
+              </div>
+
+              {/* Table of Contents */}
+              <div className="pdf-toc">
+                <h2>📋 Table of Contents</h2>
+                
+                {/* Trip Overview */}
+                <div className="pdf-toc-overview">
+                  <div className="pdf-toc-overview-item">
+                    <strong>🏠 Start:</strong> {tourData.homeLocation?.location || 'Home'}
+                  </div>
+                  {tourData.overnightStays && tourData.overnightStays.length > 0 && (
+                    <div className="pdf-toc-overview-item">
+                      <strong>🏨 Stays:</strong> {tourData.overnightStays.map(stay => stay.location).join(', ')}
+                    </div>
+                  )}
+                </div>
+
+                {/* Daily Itinerary - Compact Table */}
+                <div className="pdf-toc-section">
+                  <h3>📅 Daily Itinerary</h3>
+                  <div className="pdf-toc-table">
+                    {itinerary.map((day, index) => {
+                      // Get main POIs (non-secondary) for this day
+                      const mainPois = day.pois?.filter(poi => poi.type !== 'secondary') || []
+                      const primaryPoi = mainPois.length > 0 ? mainPois[0] : null
+                      
+                      return (
+                        <div key={day.date} className="pdf-toc-row">
+                          <div className="pdf-toc-day-info">
+                            <span className="pdf-toc-day-number">Day {index + 1}</span>
+                            <span className="pdf-toc-day-date">{format(new Date(day.date), 'MMM dd')}</span>
+                            <span className={`pdf-toc-day-type ${day.type || 'tour'}`}>
+                              {day.type === 'travel' ? '🚗' : day.type === 'mixed' ? '🚗🗺️' : '🗺️'}
+                            </span>
+                          </div>
+                          
+                          <div className="pdf-toc-day-details">
+                            {/* Travel route or base */}
+                            {(day.type === 'travel' || day.type === 'mixed') && day.route ? (
+                              <span className="pdf-toc-route-compact">
+                                {day.route.from?.location || 'Start'} → {day.route.to?.location || 'Destination'}
+                              </span>
+                            ) : day.type === 'tour' && day.overnightStay ? (
+                              <span className="pdf-toc-base-compact">
+                                🏨 {day.overnightStay.location}
+                              </span>
+                            ) : null}
+                            
+                            {/* Main POI */}
+                            {primaryPoi && (
+                              <span className="pdf-toc-poi-compact">
+                                📍 {primaryPoi.name}{mainPois.length > 1 ? ` +${mainPois.length - 1}` : ''}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
@@ -315,7 +403,7 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData, routes = [] }) => {
                     <div className="pdf-timing">
                       <h5>⏰ Timing Breakdown</h5>
                       {(() => {
-                        const timing = getTimingBreakdown(day)
+                        const timing = getTimingBreakdown(day, index)
                         return (
                           <div className="pdf-timing-details">
                             {timing.travel > 0 && (
@@ -325,27 +413,27 @@ export const PDFPreviewModal = ({ isOpen, onClose, tourData, routes = [] }) => {
                                   {timing.travelType === 'return' && '🏠⬅️ Return travel home'}
                                   {timing.travelType === 'round-trip' && '🚗🔄 Round-trip travel'}
                                 </span>
-                                <span>{Math.round(timing.travel / 60)}h {timing.travel % 60 > 0 ? `${timing.travel % 60}m` : ''}</span>
+                                <span>{Math.round(timing.travel / 60)}h {timing.travel % 60 > 0 ? `${Math.round(timing.travel % 60)}m` : ''}</span>
                               </div>
                             )}
                             
                             {timing.activities > 0 && (
                               <div className="pdf-timing-item">
                                 <span>🎯 Activities & sightseeing</span>
-                                <span>{Math.round(timing.activities / 60)}h {timing.activities % 60 > 0 ? `${timing.activities % 60}m` : ''}</span>
+                                <span>{Math.round(timing.activities / 60)}h {timing.activities % 60 > 0 ? `${Math.round(timing.activities % 60)}m` : ''}</span>
                               </div>
                             )}
                             
                             {timing.localTravel > 0 && (
                               <div className="pdf-timing-item">
                                 <span>🚶‍♂️ Local travel between sites</span>
-                                <span>{Math.round(timing.localTravel / 60)}h {timing.localTravel % 60 > 0 ? `${timing.localTravel % 60}m` : ''}</span>
+                                <span>{Math.round(timing.localTravel / 60)}h {timing.localTravel % 60 > 0 ? `${Math.round(timing.localTravel % 60)}m` : ''}</span>
                               </div>
                             )}
                             
                             <div className="pdf-timing-total">
                               <span><strong>⏱️ Total day duration</strong></span>
-                              <span><strong>{Math.round((timing.travel + timing.activities + timing.localTravel) / 60)}h {(timing.travel + timing.activities + timing.localTravel) % 60 > 0 ? `${(timing.travel + timing.activities + timing.localTravel) % 60}m` : ''}</strong></span>
+                              <span><strong>{Math.round((timing.travel + timing.activities + timing.localTravel) / 60)}h {(timing.travel + timing.activities + timing.localTravel) % 60 > 0 ? `${Math.round((timing.travel + timing.activities + timing.localTravel) % 60)}m` : ''}</strong></span>
                             </div>
                           </div>
                         )

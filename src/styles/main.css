@@ -1677,6 +1677,153 @@ body {
   padding-left: 1rem;
 }
 
+/* PDF Table of Contents - Compact */
+.pdf-toc {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.pdf-toc h2 {
+  margin: 0 0 1rem 0;
+  color: #2d3748;
+  font-size: 1.2rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Trip Overview - Compact */
+.pdf-toc-overview {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.pdf-toc-overview-item {
+  font-size: 0.85rem;
+  color: #2d3748;
+}
+
+.pdf-toc-overview-item strong {
+  color: #4a5568;
+}
+
+.pdf-toc-section {
+  margin-bottom: 1rem;
+}
+
+.pdf-toc-section:last-child {
+  margin-bottom: 0;
+}
+
+.pdf-toc-section h3 {
+  margin: 0 0 0.5rem 0;
+  color: #4a5568;
+  font-size: 1rem;
+  font-weight: 600;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.25rem;
+}
+
+/* Compact Table Layout */
+.pdf-toc-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pdf-toc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.3rem 0.5rem;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+  font-size: 0.8rem;
+}
+
+.pdf-toc-row:hover {
+  background: #f7fafc;
+}
+
+.pdf-toc-day-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 120px;
+}
+
+.pdf-toc-day-number {
+  font-weight: 600;
+  color: #2d3748;
+  min-width: 45px;
+}
+
+.pdf-toc-day-date {
+  font-size: 0.75rem;
+  color: #718096;
+  min-width: 40px;
+}
+
+.pdf-toc-day-type {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 8px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.pdf-toc-day-type.travel {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.pdf-toc-day-type.tour {
+  background: #e8f5e8;
+  color: #2e7d32;
+}
+
+.pdf-toc-day-type.mixed {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.pdf-toc-day-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.pdf-toc-route-compact,
+.pdf-toc-base-compact,
+.pdf-toc-poi-compact {
+  font-size: 0.75rem;
+  color: #4a5568;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.pdf-toc-route-compact {
+  color: #1565c0;
+}
+
+.pdf-toc-base-compact {
+  color: #e53e3e;
+}
+
+.pdf-toc-poi-compact {
+  color: #2e7d32;
+}
+
 /* PDF Export specific styles */
 @media print {
   .export-options {
